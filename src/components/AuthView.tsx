@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, ShieldAlert, CheckCircle2, ChevronRight, Mail, Chrome, HelpCircle, 
-  ArrowLeft, Building, CreditCard, Lock, Check, FileText, Globe, Image, CheckCircle, ShieldCheck
+  ArrowLeft, Building, CreditCard, Lock, Check, FileText, Globe, Image, CheckCircle, ShieldCheck,
+  Upload
 } from 'lucide-react';
 import RowOneLogo from './RowOneLogo';
 import { supabase } from '../lib/supabaseClient';
@@ -74,6 +75,67 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
   const [primaryContactName, setPrimaryContactName] = useState('');
   const [studioPassword, setStudioPassword] = useState('');
   const [studioConfirmPassword, setStudioConfirmPassword] = useState('');
+
+  const logoFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [logoDragOver, setLogoDragOver] = useState(false);
+
+  const uploadLogoToStorage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('studio-logos')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        console.warn('Backend storage uploader returned error:', error.message);
+        return null;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('studio-logos')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (err: any) {
+      console.warn('Sandbox static storage bypass error:', err.message);
+      return null;
+    }
+  };
+
+  const handleLogoFileChange = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setAuthError('Please select an image file (PNG, JPG, JPEG, WEBP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAuthError('Selected logo is too large. Choose an image under 5MB.');
+      return;
+    }
+    setAuthError(null);
+
+    // Try live Supabase upload first
+    const uploadedUrl = await uploadLogoToStorage(file);
+    if (uploadedUrl) {
+      setStudioLogoUrl(uploadedUrl);
+      return;
+    }
+
+    // Fallback to reading base64 data url directly
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setStudioLogoUrl(dataUrl);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // STEP 3: Studio Payment Details
   const [cardNumber, setCardNumber] = useState('');
@@ -1098,17 +1160,50 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
               )}
 
               {/* Extra details: Logo URL (Required) */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex justify-between">
-                  <label className="text-[9px] font-sans font-black tracking-widest text-[#dda75f] uppercase block">Distributor Logo URL (Required)</label>
-                  <span className="text-[9px] font-sans text-on-surface-variant lowercase">must be PNG/JPG &lt;5MB</span>
+                  <label className="text-[9px] font-sans font-black tracking-widest text-[#dda75f] uppercase block">Distributor Logo Upload or URL (Required)</label>
+                  <span className="text-[8px] font-mono text-on-surface-variant uppercase">studio-logos bucket</span>
                 </div>
+
+                {/* Drag and Drop Zone */}
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); setLogoDragOver(true); }}
+                  onDragLeave={() => setLogoDragOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setLogoDragOver(false); const file = e.dataTransfer.files?.[0]; if (file) handleLogoFileChange(file); }}
+                  onClick={() => logoFileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-150 ${
+                    logoDragOver 
+                      ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(239,68,68,0.1)]' 
+                      : 'border-white/10 hover:border-primary/40 bg-white/[0.01] hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <input 
+                    ref={logoFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => { const file = e.target.files?.[0]; if (file) handleLogoFileChange(file); }}
+                    className="hidden"
+                    id="studio-logo-uploader-input"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-1">
+                    <Upload className="h-4 w-4 text-on-surface-variant" />
+                    <p className="font-sans text-[10px] font-bold text-on-surface">
+                      Drag &amp; drop logo here or <span className="text-[#dda75f] hover:underline">browse</span>
+                    </p>
+                    <p className="font-sans text-[8px] text-zinc-500">
+                      Supports JPEG, PNG, WEBP (Max 5MB)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Direct text input alternative */}
                 <div className="relative flex items-center bg-surface-container border border-outline-variant/35 rounded-xl px-4 py-1.5 focus-within:border-primary transition-colors">
                   <Image className="h-4 w-4 text-on-surface-variant mr-3 shrink-0" />
                   <input
                     type="url"
                     required
-                    placeholder="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&q=80&w=150"
+                    placeholder="Or paste direct logo image URL..."
                     value={studioLogoUrl}
                     onChange={(e) => handleLogoUrlChange(e.target.value)}
                     className="w-full bg-transparent border-none text-xs text-on-surface focus:outline-none py-2 placeholder:text-surface-variant"

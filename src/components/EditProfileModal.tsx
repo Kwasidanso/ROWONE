@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { User, X, Camera, Check, Calendar, Mail, Image as ImageIcon, Upload } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
 interface EditProfileModalProps {
   username: string;
@@ -68,7 +69,36 @@ export default function EditProfileModal({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadToStorage = async (file: File, bucket: string): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        console.warn('Backend storage upload message fallback:', error.message);
+        return null;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (err: any) {
+      console.warn('Sandbox or offline storage failure fallback:', err.message);
+      return null;
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -82,12 +112,22 @@ export default function EditProfileModal({
       return;
     }
 
+    // Try real Supabase Storage upload
+    const uploadedUrl = await uploadToStorage(file, 'profile-photos');
+    if (uploadedUrl) {
+      setCustomAvatar(uploadedUrl);
+      setCustomAvatarInput(uploadedUrl);
+      setSelectedPreset('');
+      return;
+    }
+
+    // Fallback to local image reader
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64Url = event.target?.result as string;
       if (base64Url) {
         setCustomAvatar(base64Url);
-        setCustomAvatarInput('Uploaded: ' + file.name);
+        setCustomAvatarInput('Uploaded (Local): ' + file.name);
         setSelectedPreset('');
       }
     };
@@ -103,7 +143,7 @@ export default function EditProfileModal({
     setDragOver(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
@@ -119,12 +159,22 @@ export default function EditProfileModal({
       return;
     }
 
+    // Try real Supabase Storage upload
+    const uploadedUrl = await uploadToStorage(file, 'profile-photos');
+    if (uploadedUrl) {
+      setCustomAvatar(uploadedUrl);
+      setCustomAvatarInput(uploadedUrl);
+      setSelectedPreset('');
+      return;
+    }
+
+    // Fallback to local image reader
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64Url = event.target?.result as string;
       if (base64Url) {
         setCustomAvatar(base64Url);
-        setCustomAvatarInput('Dropped: ' + file.name);
+        setCustomAvatarInput('Dropped (Local): ' + file.name);
         setSelectedPreset('');
       }
     };
