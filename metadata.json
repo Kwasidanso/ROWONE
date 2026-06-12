@@ -1,0 +1,6 @@
+{
+  "name": "ROWONE",
+  "description": "A synchronized cinema platform featuring live communal streaming spaces, real-time group chats, distributor dashboard calendars, and birthday age-gates.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

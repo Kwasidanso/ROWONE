@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.2/index.css');
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  
+  --color-background: #030303;
+  --color-on-background: #edf3e3;
+  --color-primary: #ff1a40;
+}
+
+/* Custom Cinematic Keyframes and Animations */
+@keyframes emoji-float {
+  0% {
+    transform: translateY(50px) scale(0.6) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1) rotate(15deg);
+  }
+  100% {
+    transform: translateY(-300px) scale(1.4) rotate(-15deg);
+    opacity: 0;
+  }
+}
+
+@keyframes progress-glow {
+  0% {
+    left: -100%;
+  }
+  50% {
+    left: 0%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-infinite-left {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes slide-infinite-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+@keyframes pulse-gentle {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.05);
+  }
+}
+
+.animate-emoji-float {
+  animation: emoji-float 2s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+.animate-progress-glow {
+  animation: progress-glow 2s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-marquee-left {
+  animation: slide-infinite-left 40s linear infinite;
+}
+
+.animate-marquee-right {
+  animation: slide-infinite-right 40s linear infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-gentle 6s ease-in-out infinite;
+}
+
+/* Glass & Velvet Cinema UI elements */
+.glass-panel {
+  background: rgba(17, 14, 14, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-card {
+  background: rgba(27, 23, 23, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+body {
+  background-color: #030303;
+  color: #edf3e3;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Hide standard scrollbars for immersive media feeds */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Accessibility: Dyslexia typography override style */
+.font-dyslexic {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif !important;
+  letter-spacing: 0.05em;
+  word-spacing: 0.08em;
+}
+
+.font-dyslexic * {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif !important;
+}
+
+/* Accessibility: quiet mode style overrides */
+.quiet-mode *,
+.quiet-mode *::before,
+.quiet-mode *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0s !important;
+}
+
+.quiet-mode .animate-pulse,
+.quiet-mode .animate-bounce,
+.quiet-mode .animate-emoji-float,
+.quiet-mode .animate-pulse-glow {
+  animation: none !important;
+  opacity: 0.3 !important;
+}
+
+/* Custom Scrollbar for Auth Modal */
+.custom-scrollbar-auth::-webkit-scrollbar {
+  width: 8px;
+}
+.custom-scrollbar-auth::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.custom-scrollbar-auth::-webkit-scrollbar-thumb {
+  background: rgba(221, 167, 95, 0.5); /* Brand Gold accent color */
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+.custom-scrollbar-auth::-webkit-scrollbar-thumb:hover {
+  background: rgba(221, 167, 95, 0.82);
+}
+
+
+/* CSS-Only Performance-Fixed Film Grain Texture */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-repeat: repeat;
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url('data:image/png;base64,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');
+}
