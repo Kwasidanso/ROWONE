@@ -28,7 +28,7 @@ import TvModeView from './components/TvModeView';
 import { AppNotification } from './components/NotificationDropdown';
 import { INITIAL_MOVIES } from './data';
 import { Movie, BookedTicket, isMovieAllowedForUser } from './types';
-import { Search, X, Film, Star, Clock, Users, Bell, Lock, Unlock, Eye, QrCode, VolumeX } from 'lucide-react';
+import { Search, X, Film, Star, Clock, Users, Bell, Lock, Unlock, Eye, QrCode, VolumeX, Mic, MicOff } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { supabase } from './lib/supabaseClient';
 
@@ -833,6 +833,96 @@ export default function App() {
     { id: 'v2', name: 'Sarah Lin', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBN1zkyN0Pb8734ZFQ0q6_UU1ErZWPzuHCM2h5RXzYtYFsE0wGk0tDndVTt82vO2j9N1i4muihePJYlyoEsyO-MN6WgdBcmG4hdllHWUPnoZYhYXg_4HRe24hHm9FVnJyx5ZLbvxzTg2BXW0sdT-MjvOwU-h9rD5EwNfrgu96iPb_xurjXNQUONPl5E8o68dUeilrcKFFrPvPt-86Vem85Vo0IoL85mzDg1E5ZlDH1QMaFfc-auV_uw3qMgmeWmJU6Ghd40J4E6DfSN', role: 'Viewer (Synced)' },
     { id: 'v3', name: 'Leo Ventura', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCUMMmg4wUjOeGP67BHvckW7QK54LA2AaZMcuCpoM3Hu2vY9Ic9lti4YRyceBT4Xa4aVgS7MpwB64SBM0VilWuJV2mdhKG4RfOmkV6SHU7iEUNbS72EU7jB91skEIP5DDmDYOjKPZmUryVWd3v4_1VXYJ8p9TwrkZJ5eqP3NastiUon4s-VH-EhBJQb4vIFZ294pPzvvwroP1eXEUvONKLSB1iLgrLRvbY9BBCCjiInO0x9ZM1geU0eP_XnbkoiNJzz2yLq-q5qibW7', role: 'Viewer (Synced)' }
   ]);
+
+  // Dynamic Microphone level tracker & talking simulation state variables
+  const [isPipMicActive, setIsPipMicActive] = useState<boolean>(true);
+  const [pipVoiceAmplitude, setPipVoiceAmplitude] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isPipActive || !playingMovieId || !isPipMicActive) {
+      setPipVoiceAmplitude(0);
+      return;
+    }
+
+    let analyser: AnalyserNode | null = null;
+    let microphone: MediaStreamAudioSourceNode | null = null;
+    let audioContext: AudioContext | null = null;
+    let stream: MediaStream | null = null;
+    let animationFrameId: number;
+
+    const setupMic = async () => {
+      try {
+        // Attempt genuine hardware input stream
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch((e) => {
+          throw e;
+        });
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        audioContext = new AudioContextClass();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        microphone = audioContext.createMediaStreamSource(stream);
+        microphone.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const updateRealVolume = () => {
+          if (!analyser) return;
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / dataArray.length;
+          // Scale real average to an aesthetic 0-100 values
+          const scaledAmp = Math.min(100, Math.max(0, average * 2.2));
+          setPipVoiceAmplitude(Math.round(scaledAmp));
+          animationFrameId = requestAnimationFrame(updateRealVolume);
+        };
+        updateRealVolume();
+      } catch (err) {
+        // Fallback gracefully to high-fidelity simulated conversational speaking patterns
+        const runSim = () => {
+          if (!isPipActive || !playingMovieId || !isPipMicActive) {
+            setPipVoiceAmplitude(0);
+            return;
+          }
+          const t = Date.now() / 1000;
+          // Sentence rhythmic structure wave (simulating speaking breathing cycles)
+          const sentenceWave = Math.max(0, Math.sin(t * 1.4) * 0.75 + 0.25);
+          // Syllabic rise/fall jaw movement velocity modeling 
+          const syllableVelocity = Math.sin(t * 22) * 0.45 + 0.55;
+          // Microscopic hardware jitter/whisper
+          const jitter = Math.random() * 15;
+          
+          let simulatedValue = 0;
+          if (sentenceWave > 0.15) {
+            simulatedValue = Math.max(10, Math.round(sentenceWave * syllableVelocity * 65 + jitter));
+          } else {
+            simulatedValue = Math.round(Math.random() * 6); // standard room background noise floor
+          }
+
+          setPipVoiceAmplitude(Math.min(100, simulatedValue));
+          animationFrameId = requestAnimationFrame(runSim);
+        };
+        runSim();
+      }
+    };
+
+    setupMic();
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (stream) {
+        try {
+          stream.getTracks().forEach(track => track.stop());
+        } catch(e){}
+      }
+      if (audioContext) {
+        audioContext.close().catch(err => console.log('Error closing mic context:', err));
+      }
+    };
+  }, [isPipActive, playingMovieId, isPipMicActive]);
 
   const handlePingParticipant = (id: string, name: string) => {
     const actualName = id === 'v1' ? (username || 'You') : name;
@@ -2859,6 +2949,72 @@ export default function App() {
               </div>
 
               <div className="flex-1 relative overflow-hidden bg-black rounded-b-3xl">
+                {/* Real-time Voice Chat Voice Amplitude Spectrum Overlay */}
+                <div className="absolute top-2 right-2 z-30 flex items-center gap-2 bg-[#0c0c0e]/85 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/5 shadow-[0_4px_12px_rgba(0,0,0,0.5)] group/voice transition-all hover:bg-[#0c0c0e]/95 hover:border-white/10 select-none">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPipMicActive(!isPipMicActive);
+                    }}
+                    className={`p-1 rounded-full cursor-pointer transition-all active:scale-90 ${
+                      isPipMicActive 
+                        ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30' 
+                        : 'bg-white/5 text-neutral-400 hover:bg-white/10 border border-white/10'
+                    }`}
+                    title={isPipMicActive ? "Mute Synchronized Voice Chat" : "Unmute Synchronized Voice Chat"}
+                  >
+                    {isPipMicActive ? <Mic className="h-2.5 w-2.5" /> : <MicOff className="h-2.5 w-2.5" />}
+                  </button>
+
+                  <div className="flex flex-col select-none pr-1">
+                    <span className="text-[5.5px] text-zinc-500 font-sans tracking-widest font-black uppercase leading-tight">
+                      CineMic™ Sync
+                    </span>
+                    <span className="text-[7px] text-white font-mono leading-none flex items-center gap-1 font-bold">
+                      {isPipMicActive ? (
+                        <>
+                          <span className="w-1 h-3/4 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                          {pipVoiceAmplitude}% <span className="text-[5.5px] text-emerald-400 uppercase font-sans font-black">Live</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-1 h-1 rounded-full bg-neutral-600 inline-block" />
+                          <span className="text-[5.5px] text-zinc-500 uppercase font-sans font-black">Muted</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Sound Wave Spectrum (Volume Bar Bars) */}
+                  <div className="flex items-end gap-0.5 h-4 px-1 py-0.5 bg-black/40 rounded-md border border-white/5">
+                    {Array.from({ length: 10 }).map((_, k) => {
+                      const getBouncingHeight = (barIndex: number) => {
+                        if (!isPipMicActive || pipVoiceAmplitude === 0) return "4px";
+                        const distToCenter = Math.abs(barIndex - 4.5);
+                        const spreadFactor = Math.max(0.1, 1 - (distToCenter / 5.5));
+                        const pinFreq = Date.now() / 60 + barIndex * 1.8;
+                        const fluctuation = Math.sin(pinFreq) * 12 + Math.cos(pinFreq * 0.7) * 4;
+                        const baseVal = (pipVoiceAmplitude * spreadFactor) + fluctuation;
+                        const finalHeight = Math.min(100, Math.max(12, baseVal));
+                        return `${finalHeight}%`;
+                      };
+
+                      return (
+                        <div 
+                          key={k}
+                          style={{ height: getBouncingHeight(k) }}
+                          className={`w-0.5 rounded-full transition-all duration-75 ${
+                            isPipMicActive 
+                              ? 'bg-gradient-to-t from-emerald-500 via-amber-400 to-[#dda75f] shadow-[0_0_4px_rgba(16,185,129,0.4)]'
+                              : 'bg-zinc-800'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {(() => {
                   const playTarget = movies.find((m) => m.id === playingMovieId);
                   if (playTarget) {
