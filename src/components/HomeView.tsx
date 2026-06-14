@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import RowOneLogo from './RowOneLogo';
 import { 
   Ticket, 
@@ -22,7 +23,8 @@ import {
   Play,
   Crown,
   Smartphone,
-  Download
+  Download,
+  Activity
 } from 'lucide-react';
 import { INITIAL_MOVIES } from '../data';
 import { Movie } from '../types';
@@ -273,6 +275,28 @@ export default function HomeView({
     .map((id) => movies.find((m) => m.id === id))
     .filter((m): m is Movie => m !== undefined);
 
+  // Slogan dynamic choreography animation parameters (optimized 'Pan & Scan' style)
+  const anim1 = {
+    x: [-50, 50, -50],
+    rotate: [-2, 2, -2],
+    scale: [1, 1.03, 1]
+  };
+  const transition1 = { duration: 6.5, repeat: Infinity, ease: "easeInOut" };
+
+  const anim2 = {
+    x: [50, -50, 50],
+    rotate: [2.5, -2.5, 2.5],
+    scale: [1, 0.97, 1]
+  };
+  const transition2 = { duration: 7.5, repeat: Infinity, ease: "easeInOut" };
+
+  const anim3 = {
+    x: [-40, 40, -40],
+    rotate: [-1.5, 1.5, -1.5],
+    scale: [1, 1.02, 1]
+  };
+  const transition3 = { duration: 7, repeat: Infinity, ease: "easeInOut" };
+
   return (
     <div className="text-on-surface bg-[#030303] min-h-screen relative overflow-hidden select-none">
       
@@ -327,22 +351,39 @@ export default function HomeView({
           </div>
 
           {/* Majestic Serif Tagline */}
-          <h1 className="font-serif text-5xl sm:text-7xl md:text-8xl tracking-tight leading-[1.05] text-[#F5EFEB] select-none text-center">
-            <span className="block">
-              <span className="inline-block transition-transform duration-300 hover:scale-[1.05] cursor-default origin-center">
+          <h1 className="font-serif text-5xl sm:text-7xl md:text-8xl tracking-tight leading-[1.05] text-[#F5EFEB] select-none text-center relative w-full overflow-visible py-2 flex flex-col items-center">
+            {/* Slogan 1: Your cinema. */}
+            <span className="block overflow-visible h-[60px] sm:h-[80px] md:h-[100px] flex items-center justify-center">
+              <motion.span
+                animate={anim1}
+                transition={transition1}
+                className="inline-block origin-center cursor-help"
+              >
                 Your cinema.
-              </span>
+              </motion.span>
             </span>
-            <span className="block mt-2">
-              <span className="text-primary font-medium tracking-tight relative italic inline-block transition-transform duration-300 hover:scale-[1.05] cursor-default origin-center">
+
+            {/* Slogan 2: Your couch. */}
+            <span className="block mt-1 sm:mt-2 overflow-visible h-[60px] sm:h-[80px] md:h-[100px] flex items-center justify-center">
+              <motion.span
+                animate={anim2}
+                transition={transition2}
+                className="text-primary font-medium tracking-tight relative italic inline-block origin-center cursor-help"
+              >
                 Your couch.
-                <span className="absolute bottom-1 left-0 w-full h-[3px] bg-gradient-to-r from-primary to-transparent rounded" />
-              </span>
+                <span className="absolute bottom-1 left-0 w-full h-[3.5px] bg-gradient-to-r from-primary via-primary/60 to-transparent rounded-full" />
+              </motion.span>
             </span>
-            <span className="block mt-2">
-              <span className="text-[#dda75f] tracking-tight font-semibold italic inline-block transition-transform duration-300 hover:scale-[1.05] cursor-default origin-center">
+
+            {/* Slogan 3: Your people. */}
+            <span className="block mt-1 sm:mt-2 overflow-visible h-[60px] sm:h-[80px] md:h-[100px] flex items-center justify-center">
+              <motion.span
+                animate={anim3}
+                transition={transition3}
+                className="text-[#dda75f] tracking-tight font-semibold italic inline-block origin-center cursor-help"
+              >
                 Your people.
-              </span>
+              </motion.span>
             </span>
           </h1>
 
