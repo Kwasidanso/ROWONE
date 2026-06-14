@@ -28,7 +28,7 @@ import TvModeView from './components/TvModeView';
 import { AppNotification } from './components/NotificationDropdown';
 import { INITIAL_MOVIES } from './data';
 import { Movie, BookedTicket, isMovieAllowedForUser } from './types';
-import { Search, X, Film, Star, Clock, Users, Bell, Lock, Unlock, Eye, QrCode } from 'lucide-react';
+import { Search, X, Film, Star, Clock, Users, Bell, Lock, Unlock, Eye, QrCode, VolumeX } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { supabase } from './lib/supabaseClient';
 
@@ -825,6 +825,91 @@ export default function App() {
   // Share invite ticket modal
   const [showTicketModal, setShowTicketModal] = useState<BookedTicket | null>(null);
   const [ticketModalInitialKiosk, setTicketModalInitialKiosk] = useState<boolean>(false);
+
+  // Floating Picture-in-Picture Room Synchronization Participants list and dropdown states
+  const [showPipViewersDropdown, setShowPipViewersDropdown] = useState<boolean>(false);
+  const [pipParticipants, setPipParticipants] = useState<Array<{ id: string; name: string; avatar: string; role: string }>>([
+    { id: 'v1', name: 'You', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150', role: 'Host' },
+    { id: 'v2', name: 'Sarah Lin', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBN1zkyN0Pb8734ZFQ0q6_UU1ErZWPzuHCM2h5RXzYtYFsE0wGk0tDndVTt82vO2j9N1i4muihePJYlyoEsyO-MN6WgdBcmG4hdllHWUPnoZYhYXg_4HRe24hHm9FVnJyx5ZLbvxzTg2BXW0sdT-MjvOwU-h9rD5EwNfrgu96iPb_xurjXNQUONPl5E8o68dUeilrcKFFrPvPt-86Vem85Vo0IoL85mzDg1E5ZlDH1QMaFfc-auV_uw3qMgmeWmJU6Ghd40J4E6DfSN', role: 'Viewer (Synced)' },
+    { id: 'v3', name: 'Leo Ventura', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCUMMmg4wUjOeGP67BHvckW7QK54LA2AaZMcuCpoM3Hu2vY9Ic9lti4YRyceBT4Xa4aVgS7MpwB64SBM0VilWuJV2mdhKG4RfOmkV6SHU7iEUNbS72EU7jB91skEIP5DDmDYOjKPZmUryVWd3v4_1VXYJ8p9TwrkZJ5eqP3NastiUon4s-VH-EhBJQb4vIFZ294pPzvvwroP1eXEUvONKLSB1iLgrLRvbY9BBCCjiInO0x9ZM1geU0eP_XnbkoiNJzz2yLq-q5qibW7', role: 'Viewer (Synced)' }
+  ]);
+
+  const handlePingParticipant = (id: string, name: string) => {
+    const actualName = id === 'v1' ? (username || 'You') : name;
+    triggerAppNotification({
+      id: `ping-${Date.now()}`,
+      type: 'screening',
+      title: 'Sync Ping Sent',
+      message: `📲 Pinged ${actualName}! Requesting clock resynchronization for direct screen-sharing.🍿`,
+      timestamp: 'Just now',
+      movieTitle: movies.find(m => m.id === playingMovieId)?.title || "Sync Space"
+    });
+  };
+
+  const handleMuteAllParticipants = () => {
+    setPipParticipants(prev => prev.map(p => {
+      if (p.id === 'v1') return p;
+      return { ...p, role: 'Viewer (Muted)' };
+    }));
+    triggerAppNotification({
+      id: `mute-all-${Date.now()}`,
+      type: 'screening',
+      title: 'Theater Muted',
+      message: '🎙️ Synced audio/chat channels silenced for all audience members.',
+      timestamp: 'Just now',
+      movieTitle: movies.find(m => m.id === playingMovieId)?.title || "Sync Space"
+    });
+  };
+
+  const handleKickParticipant = (id: string, name: string) => {
+    setPipParticipants(prev => prev.filter(p => p.id !== id));
+    triggerAppNotification({
+      id: `kick-${Date.now()}`,
+      type: 'screening',
+      title: 'Participant Removed',
+      message: `🚫 Removed guest '${name}' from active synchronized room.`,
+      timestamp: 'Just now',
+      movieTitle: movies.find(m => m.id === playingMovieId)?.title || "Sync Space"
+    });
+  };
+
+  const handleAddViewersSimulation = () => {
+    const mockNames = [
+      { name: 'Diana Woods', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150', role: 'Viewer (Synced)' },
+      { name: 'Marcus Brody', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150', role: 'Distributor' },
+      { name: 'Cassandra Reel', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150', role: 'Viewer (Synced)' },
+      { name: 'Cinephile_99', avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=150', role: 'Viewer (Synced)' }
+    ];
+    
+    const unused = mockNames.filter(mn => !pipParticipants.some(p => p.name === mn.name));
+    if (unused.length === 0) {
+      triggerAppNotification({
+        id: `full-room-${Date.now()}`,
+        type: 'screening',
+        title: 'Max Capacity Achieved',
+        message: 'This Picture-in-Picture synchronization room has reached its maximum viewer count!',
+        timestamp: 'Just now',
+        movieTitle: movies.find(m => m.id === playingMovieId)?.title || "Sync Space"
+      });
+      return;
+    }
+    
+    const picked = unused[Math.floor(Math.random() * unused.length)];
+    const newViewer = {
+      id: `sim-v-${Date.now()}`,
+      ...picked
+    };
+    
+    setPipParticipants(prev => [...prev, newViewer]);
+    triggerAppNotification({
+      id: `joined-${Date.now()}`,
+      type: 'invite',
+      title: 'Viewer Entered Sync Room',
+      message: `👥 ${picked.name} joined the synchronized screening session.`,
+      timestamp: 'Just now',
+      movieTitle: movies.find(m => m.id === playingMovieId)?.title || "Sync Space"
+    });
+  };
 
   // Seat selection modal state
   const [seatSelectionData, setSeatSelectionData] = useState<{
@@ -2459,7 +2544,7 @@ export default function App() {
             className="fixed bottom-20 right-6 z-50 pointer-events-none"
           >
             <div 
-              className={`w-80 md:w-[360px] rounded-3xl border overflow-hidden bg-black flex flex-col group pointer-events-auto select-none touch-none transition-all duration-300 ${
+              className={`w-80 md:w-[360px] rounded-3xl border relative bg-black flex flex-col group pointer-events-auto select-none touch-none transition-all duration-300 ${
                 showPipSnapGlow 
                   ? 'border-emerald-400 ring-2 ring-emerald-500/50 shadow-[0_15px_40px_rgba(0,0,0,0.85),0_0_25px_rgba(16,185,129,0.7)] scale-[1.015]'
                   : 'border-white/10 shadow-[0_15px_40px_rgba(0,0,0,0.85)]'
@@ -2486,7 +2571,7 @@ export default function App() {
             >
               {/* PiP Floating Window Mini Header */}
               <div 
-                className={`bg-[#0c0c0e]/90 backdrop-blur-md px-3 py-1.5 flex justify-between items-center text-[9px] font-sans border-b border-white/5 select-none text-neutral-400 shrink-0 ${isPipLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} transition-opacity duration-300 ease-in-out ${showPipHeader ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                className={`bg-[#0c0c0e]/90 backdrop-blur-md px-3 py-1.5 flex justify-between items-center text-[9px] font-sans border-b border-white/5 select-none text-neutral-400 shrink-0 rounded-t-3xl ${isPipLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} transition-opacity duration-300 ease-in-out ${showPipHeader ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 onPointerDown={(e) => {
                   const target = e.target as HTMLElement;
                   if (target.closest('button') || isPipLocked) {
@@ -2597,6 +2682,119 @@ export default function App() {
                     <span>{pipAspectRatio === 'cinematic' ? 'Cinematic' : 'Default'}</span>
                   </button>
 
+                  {/* Viewers Dropdown & Badge */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      id="pip-viewers-dropdown-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPipViewersDropdown(!showPipViewersDropdown);
+                      }}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[7px] font-sans font-black uppercase tracking-widest cursor-pointer transition-all duration-150 active:scale-95 ${
+                        showPipViewersDropdown 
+                          ? 'bg-[#dda75f]/20 text-[#dda75f] border-[#dda75f]/40 font-black shadow-[0_0_8px_rgba(221,167,95,0.3)]' 
+                          : 'bg-white/5 text-neutral-300 border-white/10 hover:bg-white/12 hover:border-[#dda75f]/40 hover:text-[#dda75f]'
+                      }`}
+                      title="View Active Room Synchronization Participants"
+                    >
+                      <Users className="h-2 w-2 text-[#dda75f] animate-pulse shrink-0" />
+                      <span>{pipParticipants.length} Viewers</span>
+                    </button>
+
+                    {/* Popover/Dropdown Card */}
+                    <AnimatePresence>
+                      {showPipViewersDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                          transition={{ duration: 0.12 }}
+                          className="absolute right-0 top-6 z-[70] w-48 bg-neutral-950/95 border border-white/10 rounded-2xl p-2.5 shadow-[0_12px_30px_rgba(0,0,0,0.95)] backdrop-blur-md space-y-2 pointer-events-auto select-none"
+                        >
+                          <div className="flex justify-between items-center pb-1.5 border-b border-white/5">
+                            <span className="text-[7.5px] font-sans font-black uppercase tracking-widest text-[#dda75f] flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                              Sync Party Lobby
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMuteAllParticipants();
+                              }}
+                              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/20 border border-red-500/20 hover:bg-red-500/30 hover:border-red-500/50 text-[5.5px] font-sans font-black uppercase tracking-widest transition-all cursor-pointer text-red-400 active:scale-95"
+                              title="Silence all synced audience participants"
+                            >
+                              <VolumeX className="h-1.5 w-1.5 shrink-0" />
+                              <span>Mute All</span>
+                            </button>
+                          </div>
+
+                          <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1 scrollbar-none">
+                            {pipParticipants.map((p) => (
+                              <div key={p.id} className="flex justify-between items-center gap-1.5 p-1 rounded hover:bg-white/5 transition-all">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <img 
+                                    src={p.id === 'v1' ? (userAvatarUrl || p.avatar) : p.avatar} 
+                                    alt={p.name} 
+                                    className="w-4 h-4 rounded-full border border-white/10 object-cover shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="text-[7.5px] font-bold text-white truncate max-w-[85px] leading-tight">
+                                      {p.id === 'v1' ? (username || 'You') : p.name}
+                                    </div>
+                                    <div className="text-[5.5px] text-zinc-500 leading-none font-medium">
+                                      {p.role}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePingParticipant(p.id, p.name);
+                                    }}
+                                    className="px-1 py-0.5 rounded bg-white/5 border border-white/10 hover:bg-[#dda75f]/25 hover:border-[#dda75f]/50 text-[5px] font-sans font-black uppercase tracking-widest transition-all cursor-pointer text-[#dda75f] active:scale-90"
+                                  >
+                                    Ping
+                                  </button>
+                                  {p.id !== 'v1' && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleKickParticipant(p.id, p.name);
+                                      }}
+                                      className="px-1 py-0.5 rounded bg-red-950/20 border border-red-500/20 hover:bg-red-500/30 hover:border-red-500/50 text-[5px] font-sans font-black uppercase tracking-widest transition-all cursor-pointer text-red-400 active:scale-90"
+                                    >
+                                      Kick
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="pt-1.5 border-t border-white/5 flex gap-1.5 justify-between">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddViewersSimulation();
+                              }}
+                              className="w-full py-1 text-center bg-[#dda75f] hover:bg-amber-500 text-black rounded-lg font-sans text-[6px] font-black uppercase tracking-widest transition-all cursor-pointer active:scale-95"
+                            >
+                              Add Mock Viewer
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   {/* Scan QR Button for Ticket entry */}
                   <button
                     id="scan-qr-pip-btn"
@@ -2660,7 +2858,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex-1 relative overflow-hidden bg-black">
+              <div className="flex-1 relative overflow-hidden bg-black rounded-b-3xl">
                 {(() => {
                   const playTarget = movies.find((m) => m.id === playingMovieId);
                   if (playTarget) {
