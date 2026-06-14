@@ -1,191 +1,193 @@
--- =========================================================================
---                     ROWONE SUPABASE DATABASE SCHEMA
--- =========================================================================
--- Run this SQL in your Supabase SQL Editor to provision the required tables,
--- trigger routines, storage buckets, and payment activation functions.
+-- ==========================================
+-- ROWONE CINEMA - SUPABASE SCHEMA INITIALIZATION
+-- ==========================================
+-- Execute this script inside your Supabase SQL Editor to bootstrap
+-- your tables, triggers, storage buckets, RLS security policies,
+-- and the studio activation RPC function.
 
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
-
--- -------------------------------------------------------------------------
 -- 1. PROFILES TABLE
--- -------------------------------------------------------------------------
--- Handled as a central identity linked to auth.users.
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  email text not null,
-  account_type text not null default 'individual' check (account_type in ('individual', 'studio')),
-  created_at timestamptz default now()
+-- Create a profile matching each authenticated user on signup.
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  account_type TEXT NOT NULL CHECK (account_type IN ('individual', 'studio')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- Enable Row Level Security (RLS)
-alter table public.profiles enable row level security;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Policies for Profiles
-create policy "Public profiles are viewable by anyone" on public.profiles
-  for select using (true);
+-- Select policies
+CREATE POLICY "Allow public read access to profiles" ON public.profiles
+  FOR SELECT USING (true);
 
-create policy "Users can update their own profile" on public.profiles
-  for update using (auth.uid() = id);
+-- Insert policies
+CREATE POLICY "Allow users to insert their own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
-create policy "Enable insert for registration hook" on public.profiles
-  for insert with check (true);
+-- Update policies 
+CREATE POLICY "Allow users to update their own profile" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id);
 
--- -------------------------------------------------------------------------
+
 -- 2. INDIVIDUALS TABLE
--- -------------------------------------------------------------------------
--- Personal details for individual viewers.
-create table if not exists public.individuals (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade unique,
-  full_name text,
-  date_of_birth text,
-  age integer,
-  is_underage boolean default false,
-  pass_status text default 'none',
-  created_at timestamptz default now()
+-- Details for standard audience/cinephile users.
+CREATE TABLE IF NOT EXISTS public.individuals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE,
+  full_name TEXT NOT NULL,
+  dob TEXT NOT NULL,
+  phone_number TEXT,
+  home_address_street TEXT,
+  home_address_city TEXT,
+  home_address_country TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-alter table public.individuals enable row level security;
+-- Enable RLS
+ALTER TABLE public.individuals ENABLE ROW LEVEL SECURITY;
 
--- Policies for Individuals
-create policy "Individuals are viewable by everyone" on public.individuals
-  for select using (true);
+-- Select policies
+CREATE POLICY "Allow public read access to individuals" ON public.individuals
+  FOR SELECT USING (true);
 
-create policy "Users can insert their own individual info" on public.individuals
-  for insert with check (auth.uid() = user_id);
+-- Insert/Update policies
+CREATE POLICY "Allow users to manage their own individual details" ON public.individuals
+  FOR ALL USING (auth.uid() = user_id);
 
-create policy "Users can update their own individual info" on public.individuals
-  for update using (auth.uid() = user_id);
 
--- -------------------------------------------------------------------------
 -- 3. STUDIOS TABLE
--- -------------------------------------------------------------------------
--- Distributor brand registrations and film studios.
-create table if not exists public.studios (
-  id uuid primary key default gen_random_uuid(),
-  owner_user_id uuid not null references public.profiles(id) on delete cascade unique,
-  studio_name text not null,
-  logo_url text,
-  is_verified boolean not null default false,
-  studio_phone text,
-  studio_address_street text,
-  studio_address_city text,
-  studio_address_country text,
-  website_url text,
-  studio_bio text,
-  studio_type text,
-  primary_contact_name text,
-  created_at timestamptz default now()
+-- Details for film production studios.
+CREATE TABLE IF NOT EXISTS public.studios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE,
+  studio_name TEXT NOT NULL,
+  logo_url TEXT,
+  is_verified BOOLEAN NOT NULL DEFAULT false, -- Defaults to false per specifications
+  studio_phone TEXT,
+  studio_address_street TEXT,
+  studio_address_city TEXT,
+  studio_address_country TEXT,
+  website_url TEXT,
+  studio_bio TEXT,
+  studio_type TEXT,
+  primary_contact_name TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-alter table public.studios enable row level security;
+-- Enable RLS
+ALTER TABLE public.studios ENABLE ROW LEVEL SECURITY;
 
--- Policies for Studios
-create policy "Studios are viewable by everyone" on public.studios
-  for select using (true);
+-- Select policies
+CREATE POLICY "Allow public read access to studios" ON public.studios
+  FOR SELECT USING (true);
 
-create policy "Studio owners can insert their own studio metadata" on public.studios
-  for insert with check (auth.uid() = owner_user_id);
+-- Insert/Update policies
+CREATE POLICY "Allow owners to manage their own studio organization" ON public.studios
+  FOR ALL USING (auth.uid() = owner_user_id);
 
-create policy "Studio owners can update their own studio metadata" on public.studios
-  for update using (auth.uid() = owner_user_id);
 
--- -------------------------------------------------------------------------
 -- 4. STUDIO_PAYMENTS TABLE
--- -------------------------------------------------------------------------
--- Tracks fee collection for commercial licensing.
-create table if not exists public.studio_payments (
-  id uuid primary key default gen_random_uuid(),
-  studio_id uuid not null references public.profiles(id) on delete cascade,
-  amount numeric(10, 2) not null default 49.99,
-  status text not null default 'pending' check (status in ('pending', 'success', 'failed')),
-  payment_reference text unique,
-  created_at timestamptz default now()
+-- Tracks the $49.99 filmmaking registration fee transactions.
+CREATE TABLE IF NOT EXISTS public.studio_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  studio_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  amount DECIMAL(10, 2) NOT NULL DEFAULT 49.99,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'success', 'failed')),
+  payment_reference TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-alter table public.studio_payments enable row level security;
+-- Enable RLS
+ALTER TABLE public.studio_payments ENABLE ROW LEVEL SECURITY;
 
--- Policies for Payments
-create policy "Users can view their own payments" on public.studio_payments
-  for select using (auth.uid() = studio_id);
+-- Select policies
+CREATE POLICY "Allow studios to inspect their own payment receipts" ON public.studio_payments
+  FOR SELECT USING (auth.uid() = studio_id);
 
-create policy "System/Users can record initial payment transactions" on public.studio_payments
-  for insert with check (auth.uid() = studio_id);
+-- Insert policies
+CREATE POLICY "Allow studios to write payments for registration" ON public.studio_payments
+  FOR INSERT WITH CHECK (auth.uid() = studio_id);
 
-create policy "System/Users can update their own transaction status" on public.studio_payments
-  for update using (auth.uid() = studio_id);
 
--- -------------------------------------------------------------------------
--- 5. RPC FUNCTION: activate_studio
--- -------------------------------------------------------------------------
--- Triggers verification flag flip upon success of registration billing reference.
-create or replace function public.activate_studio(
-  studio_id uuid,
-  payment_reference text
-)
-returns void
-language plpgsql
-security definer
-as $$
-begin
-  -- 1. Assert payment status is successful
-  update public.studio_payments
-  set status = 'success'
-  where studio_payments.studio_id = activate_studio.studio_id
-    and studio_payments.payment_reference = activate_studio.payment_reference;
+-- 5. FUNCTION & RPC: activate_studio
+-- Activates the studio (marks is_verified to true) after verification payment clears successfully.
+CREATE OR REPLACE FUNCTION public.activate_studio(studio_id UUID, payment_reference TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER -- Runs with elevated privileges to update tables securely
+AS $$
+DECLARE
+  payment_record_status TEXT;
+  payment_exists BOOLEAN := false;
+BEGIN
+  -- Check if a successful payment transaction matching reference exists
+  SELECT status, TRUE INTO payment_record_status, payment_exists
+  FROM public.studio_payments
+  WHERE public.studio_payments.studio_id = activate_studio.studio_id 
+    AND public.studio_payments.payment_reference = activate_studio.payment_reference
+  LIMIT 1;
 
-  -- 2. Flip verification flag to true under studios table
-  update public.studios
-  set is_verified = true
-  where owner_user_id = activate_studio.studio_id;
-end;
+  IF payment_exists AND payment_record_status = 'success' THEN
+    -- Update studio to verified status
+    UPDATE public.studios
+    SET is_verified = TRUE
+    WHERE owner_user_id = activate_studio.studio_id;
+    
+    RETURN TRUE;
+  ELSE
+    RAISE EXCEPTION 'A valid verification payment reference was not found or has failed.';
+    RETURN FALSE;
+  END IF;
+END;
 $$;
 
--- -------------------------------------------------------------------------
--- 6. AUTH SIGNUP TRIGGER HOOK
--- -------------------------------------------------------------------------
--- Automatically inserts a default profile structure when registering in Supabase.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-as $$
-begin
-  insert into public.profiles (id, email, account_type)
-  values (
+
+-- 6. TRIGGER FOR AUTOMATIC USER PROFILE PROVISIONING (OPTIONAL BUT RECOMMENDED)
+-- Automatically provisions a row in profiles when an auth user registers.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, account_type)
+  VALUES (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'account_type', 'individual')
+    COALESCE(new.raw_user_meta_data->>'account_type', 'individual')
   )
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-create or replace trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+-- Bind trigger to auth.users inserts
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- -------------------------------------------------------------------------
--- 7. STORAGE BUCKET DEFINITIONS
--- -------------------------------------------------------------------------
--- Registers profile-photos & studio-logos within Supabase Storage.
-insert into storage.buckets (id, name, public)
-values 
-  ('profile-photos', 'profile-photos', true),
-  ('studio-logos', 'studio-logos', true)
-on conflict (id) do nothing;
 
--- Storage Security Policies
-create policy "Allow public read access to profile photo bucket" on storage.objects
-  for select using (bucket_id = 'profile-photos');
+-- 7. STORAGE BUCKETS
+-- Setup requested public buckets for uploads
+-- Run the following queries to initialize Supabase storage containers.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('profile-photos', 'profile-photos', true)
+ON CONFLICT (id) DO NOTHING;
 
-create policy "Allow authenticated upload key to profile photo bucket" on storage.objects
-  for insert with check (bucket_id = 'profile-photos' and auth.role() = 'authenticated');
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('studio-logos', 'studio-logos', true)
+ON CONFLICT (id) DO NOTHING;
 
-create policy "Allow public read access to studio logos bucket" on storage.objects
-  for select using (bucket_id = 'studio-logos');
+-- RLS policies for storage buckets (profile-photos)
+CREATE POLICY "Allow public read on profile-photos" ON storage.objects
+  FOR SELECT USING (bucket_id = 'profile-photos');
 
-create policy "Allow authenticated upload key to studio logos bucket" on storage.objects
-  for insert with check (bucket_id = 'studio-logos' and auth.role() = 'authenticated');
+CREATE POLICY "Allow users to upload on profile-photos" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'profile-photos' AND auth.role() = 'authenticated');
+
+-- RLS policies for storage buckets (studio-logos)
+CREATE POLICY "Allow public read on studio-logos" ON storage.objects
+  FOR SELECT USING (bucket_id = 'studio-logos');
+
+CREATE POLICY "Allow users to upload on studio-logos" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'studio-logos' AND auth.role() = 'authenticated');

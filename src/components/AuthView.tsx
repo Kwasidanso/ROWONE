@@ -522,7 +522,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
         owner_user_id: activeUserId,
         studio_name: studioName,
         logo_url: studioLogoUrl,
-        is_verified: true, // cleared!
+        is_verified: false, // Starts as false and is activated after successful payment succeeds via the trigger RPC below
         studio_phone: studioPhone,
         studio_address_street: studioStreet,
         studio_address_city: studioCity,
