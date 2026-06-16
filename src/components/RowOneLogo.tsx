@@ -121,8 +121,8 @@ export default function RowOneLogo({
           className="mt-2.5 font-serif text-[10px] tracking-[0.4em] font-black tracking-widest text-center select-none"
           style={{ textShadow: '0 2px 4px rgba(0,0,0,0.4)' }}
         >
-          <span className="text-[#dda75f] group-hover:text-[#fde2af] transition-all duration-300 group-hover:[text-shadow:0_0_12px_rgba(253,226,175,0.7)]">Row</span>
-          <span className="text-white group-hover:text-white/95 transition-all duration-300 group-hover:[text-shadow:0_0_10px_rgba(255,255,255,0.5)]">One</span>
+          <span className="text-[#dda75f] group-hover:text-[#fde2af] transition-all duration-300 group-hover:[text-shadow:0_0_12px_rgba(253,226,175,0.7)]">ROW</span>
+          <span className="text-white group-hover:text-white/95 transition-all duration-300 group-hover:[text-shadow:0_0_10px_rgba(255,255,255,0.5)]">ONE</span>
         </span>
       )}
     </div>

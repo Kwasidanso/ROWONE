@@ -91,7 +91,7 @@ export default function MovieDetailView({
     try {
       const link = document.createElement('a');
       link.href = movie.qrCodeUrl;
-      link.download = `rowone-qr-${movie.slug || sanitizeTitleToSlug(movie.title)}.png`;
+      link.download = `ROWONE-QR-${movie.slug || sanitizeTitleToSlug(movie.title)}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -124,7 +124,7 @@ export default function MovieDetailView({
         target = `https://t.me/share/url?url=${encodeURIComponent(directUrl)}&text=${encodeURIComponent(txt)}`;
         break;
       case 'email':
-        target = `mailto:?subject=${encodeURIComponent('RowOne Screening Invite: ' + movie.title)}&body=${encodeURIComponent(txt + '\n\n' + directUrl)}`;
+        target = `mailto:?subject=${encodeURIComponent('ROWONE Screening Invite: ' + movie.title)}&body=${encodeURIComponent(txt + '\n\n' + directUrl)}`;
         break;
     }
 
@@ -755,7 +755,7 @@ export default function MovieDetailView({
                   <Share2 className="h-4 w-4" />
                 </div>
                 <div className="space-y-0.5">
-                  <h4 className="font-display font-black text-[11px] text-white uppercase tracking-wider">RowOne Share Hub</h4>
+                  <h4 className="font-display font-black text-[11px] text-white uppercase tracking-wider">ROWONE Share Hub</h4>
                   <p className="text-[7.5px] font-mono text-zinc-400 uppercase tracking-widest">{movie.contentType || 'MOVIE'} LEDGER</p>
                 </div>
               </div>

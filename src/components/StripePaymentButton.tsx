@@ -786,7 +786,7 @@ export const StripePaymentButton: React.FC<StripePaymentButtonProps> = ({
                 />
               </div>
               <p className="text-[9px] text-zinc-500 leading-normal">
-                No redirection required. RowOne links a secure, pre-approved digital token linked with your PayPal credentials.
+                No redirection required. ROWONE links a secure, pre-approved digital token linked with your PayPal credentials.
               </p>
             </div>
           )}

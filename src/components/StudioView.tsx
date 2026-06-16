@@ -812,7 +812,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                   <span className="font-sans font-black text-[10px] tracking-widest uppercase">Pending Studio Code Status</span>
                 </div>
                 <h4 className="font-display font-semibold text-base text-white">Activate Your Studio Brand License ($49.99 Fee)</h4>
-                <p className="font-sans text-xs text-gray-400 max-w-2xl lowercase">under RowOne standards, an active brand verification code is required before scheduling screenings in cinema halls or publishing custom reels.</p>
+                <p className="font-sans text-xs text-gray-400 max-w-2xl lowercase">under ROWONE standards, an active brand verification code is required before scheduling screenings in cinema halls or publishing custom reels.</p>
               </div>
               <div className="shrink-0">
                 <button
@@ -1381,10 +1381,10 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                     {/* Metadata summary snippet styled exactly like premium iMessage / Discord embeds */}
                     <div className="p-3 bg-zinc-900/40 border-t border-white/5 space-y-1">
                       <span className="text-[8px] font-mono text-[#dda75f] uppercase tracking-widest font-black leading-none block">
-                        rowone.xyz
+                        ROWONE.XYZ
                       </span>
                       <h4 className="font-display font-bold text-xs text-white leading-tight mt-0.5 text-left">
-                        {title ? `${title.toUpperCase()} | RowOne ${contentType === 'reel' ? 'Showreel' : 'Cinema'}` : 'UNTITLED CINEMA HUB'}
+                        {title ? `${title.toUpperCase()} | ROWONE ${contentType === 'reel' ? 'Showreel' : 'Cinema'}` : 'UNTITLED CINEMA HUB'}
                       </h4>
                       <p className="text-[9.5px] font-sans text-zinc-400 leading-normal line-clamp-2 text-left">
                         {synopsis ? (synopsis.length > 155 ? synopsis.substring(0, 155) + '...' : synopsis) : 'Discover and watch premium, certified high-resolution cinematic masterpieces and creator showreels live with friends in synchronization.'}
@@ -1409,7 +1409,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                         R1
                       </div>
                       <div className="space-y-0">
-                        <span className="text-[9px] text-[#dfe0e2] font-semibold block leading-none">RowOne Cinema</span>
+                        <span className="text-[9px] text-[#dfe0e2] font-semibold block leading-none">ROWONE Cinema</span>
                         <span className="text-[8.5px] text-zinc-500 font-mono block leading-none">
                           https://www.rowone.xyz/{contentType === 'reel' ? 'reels' : 'movies'}/{title ? title.toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-') : 'untitled'}
                         </span>
@@ -1418,7 +1418,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                     
                     <div className="space-y-1">
                       <h4 className="font-sans text-[#4dabf7] hover:underline text-xs md:text-sm font-semibold leading-tight cursor-default text-left">
-                        {title ? `${title.toUpperCase()} | RowOne ${contentType === 'reel' ? 'Showreel' : 'Cinema'}` : 'UNTITLED CINEMA HUB'}
+                        {title ? `${title.toUpperCase()} | ROWONE ${contentType === 'reel' ? 'Showreel' : 'Cinema'}` : 'UNTITLED CINEMA HUB'}
                       </h4>
                       <p className="text-[10.5px] font-sans text-zinc-400 leading-relaxed text-left">
                         {synopsis ? (synopsis.length > 155 ? synopsis.substring(0, 155) + '...' : synopsis) : 'Discover and watch premium, certified high-resolution cinematic masterpieces and creator showreels live with friends in synchronization.'}
@@ -2081,7 +2081,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                               else if (soc.platform === 'facebook') target = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(urlStr)}`;
                               else if (soc.platform === 'x') target = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(urlStr)}`;
                               else if (soc.platform === 'telegram') target = `https://t.me/share/url?url=${encodeURIComponent(urlStr)}&text=${encodeURIComponent(text)}`;
-                              else if (soc.platform === 'email') target = `mailto:?subject=${encodeURIComponent('RowOne Premiere: ' + uploadedMovie.title)}&body=${encodeURIComponent(text + '\n\n' + urlStr)}`;
+                              else if (soc.platform === 'email') target = `mailto:?subject=${encodeURIComponent('ROWONE Premiere: ' + uploadedMovie.title)}&body=${encodeURIComponent(text + '\n\n' + urlStr)}`;
                               
                               if (target) window.open(target, '_blank');
                             }}

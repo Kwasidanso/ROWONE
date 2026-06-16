@@ -3292,9 +3292,11 @@ export default function App() {
           >
             <div 
               className={`w-80 md:w-[360px] rounded-3xl border relative bg-black flex flex-col group pointer-events-auto select-none touch-none transition-all duration-300 ${
-                showPipSnapGlow 
-                  ? 'border-emerald-400 ring-2 ring-emerald-500/50 shadow-[0_15px_40px_rgba(0,0,0,0.85),0_0_25px_rgba(16,185,129,0.7)] scale-[1.015]'
-                  : 'border-white/10 shadow-[0_15px_40px_rgba(0,0,0,0.85)]'
+                isPipLocked
+                  ? 'border-red-500/90 shadow-[0_15px_40px_rgba(0,0,0,0.85),0_0_15px_rgba(239,68,68,0.25)]'
+                  : showPipSnapGlow 
+                    ? 'border-emerald-400 ring-2 ring-emerald-500/50 shadow-[0_15px_40px_rgba(0,0,0,0.85),0_0_25px_rgba(16,185,129,0.7)] scale-[1.015]'
+                    : 'border-white/10 shadow-[0_15px_40px_rgba(0,0,0,0.85)]'
               } ${
                 pipAspectRatio === 'cinematic' 
                   ? 'h-36 md:h-[150px]' 
@@ -3316,6 +3318,14 @@ export default function App() {
                 }, 1200);
               }}
             >
+              {/* Persistent red Locked status badge centered on the container border */}
+              {isPipLocked && (
+                <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-[60] bg-red-600 border border-red-500/50 shadow-md text-white font-sans text-[7px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full flex items-center gap-1 select-none pointer-events-none animate-bounce">
+                  <Lock className="h-1.5 w-1.5 fill-white text-white shrink-0 animate-pulse" />
+                  <span>WINDOW LOCKED</span>
+                </div>
+              )}
+
               {/* PiP Floating Window Mini Header */}
               <div 
                 className={`bg-[#0c0c0e]/90 backdrop-blur-md px-3 py-1.5 flex justify-between items-center text-[9px] font-sans border-b border-white/5 select-none text-neutral-400 shrink-0 rounded-t-3xl ${isPipLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} transition-opacity duration-300 ease-in-out ${showPipHeader ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
@@ -3404,15 +3414,22 @@ export default function App() {
                 }}
               >
                 <div className="flex items-center gap-1.5 truncate mr-2">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping shrink-0" />
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isPipLocked ? 'bg-red-500 animate-pulse' : 'bg-emerald-500 animate-ping'}`} />
                   <strong className="text-white truncate uppercase tracking-wide font-display">
                     {movies.find(m => m.id === playingMovieId)?.title} • PiP
                   </strong>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 select-none">
-                  <span className="font-mono text-[7px] text-emerald-400 font-extrabold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest hidden sm:inline-block">
-                    Sync Active
-                  </span>
+                  {isPipLocked ? (
+                    <span className="font-mono text-[7px] text-red-400 font-extrabold bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20 uppercase tracking-widest flex items-center gap-1 tracking-wider leading-none shrink-0 animate-pulse">
+                      <Lock className="h-1.5 w-1.5 text-red-500 fill-current shrink-0" />
+                      Locked
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[7px] text-emerald-400 font-extrabold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest hidden sm:inline-block">
+                      Sync Active
+                    </span>
+                  )}
                   
                   {/* Aspect Ratio Toggler */}
                   <button

@@ -1100,7 +1100,7 @@ export default function SettingsView({
                         <span>🎬 Studio Distributor Portal</span>
                       </div>
                       <h3 className="font-display font-extrabold text-[#dda75f] text-md uppercase tracking-wide">
-                        RowOne Film Syndicate
+                        ROWONE Film Syndicate
                       </h3>
                       <p className="font-sans text-[11.5px] text-gray-400 leading-normal max-w-sm lowercase">
                         deploy customized screenings inside live grand theater lounges, publish tickers, and upload high-fidelity movie materials.
@@ -2401,7 +2401,7 @@ export default function SettingsView({
                     />
                   </div>
                   <p className="text-[9px] text-zinc-400 leading-normal lowercase">
-                    clicking authorize below will link your securely-tokenized paypal billing profile with RowOne for seamless recurrent payments.
+                    clicking authorize below will link your securely-tokenized paypal billing profile with ROWONE for seamless recurrent payments.
                   </p>
                 </div>
               )}

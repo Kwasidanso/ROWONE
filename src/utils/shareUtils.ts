@@ -57,10 +57,10 @@ export function updateSeoTags(movie: {
   slug?: string;
 }) {
   try {
-    const titleText = `${movie.title} | RowOne`;
+    const titleText = `${movie.title} | ROWONE`;
     document.title = titleText;
     
-    const descriptionText = movie.synopsis || `Watch ${movie.title} on RowOne (www.rowone.xyz) - the ultimate creator cinematic ledger.`;
+    const descriptionText = movie.synopsis || `Watch ${movie.title} on ROWONE (www.rowone.xyz) - the ultimate creator cinematic ledger.`;
     const shareUrlText = `https://www.rowone.xyz/${movie.contentType || 'movie'}s/${movie.slug || 'slug'}`;
     const imageText = movie.imageUrl || '';
 
@@ -129,14 +129,14 @@ export function updateSeoTags(movie: {
  */
 export function resetSeoTags() {
   try {
-    document.title = "RowOne | Ultimate Creative Cinema Ledger";
-    const desc = "Connect, upload, and stream high-octane indie reels and premier cinematic theatrical sessions with friends on RowOne.";
+    document.title = "ROWONE | Ultimate Creative Cinema Ledger";
+    const desc = "Connect, upload, and stream high-octane indie reels and premier cinematic theatrical sessions with friends on ROWONE.";
     
     let metaDesc = document.querySelector('meta[name="description"]');
     if (metaDesc) metaDesc.setAttribute('content', desc);
     
     let ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) ogTitle.setAttribute('content', "RowOne | Ultimate Creative Cinema Ledger");
+    if (ogTitle) ogTitle.setAttribute('content', "ROWONE | Ultimate Creative Cinema Ledger");
     
     let ogDesc = document.querySelector('meta[property="og:description"]');
     if (ogDesc) ogDesc.setAttribute('content', desc);
