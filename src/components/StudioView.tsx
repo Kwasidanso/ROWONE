@@ -2028,7 +2028,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                           onClick={() => {
                             const link = document.createElement('a');
                             link.href = uploadedMovie.qrCodeUrl!;
-                            link.download = `rowone-qr-${uploadedMovie.slug}.png`;
+                            link.download = `ROWONE-qr-${uploadedMovie.slug}.png`;
                             document.body.appendChild(link);
                             link.click();
                             document.body.removeChild(link);

@@ -145,7 +145,7 @@ export const PaymentHistorySection: React.FC<PaymentHistorySectionProps> = ({
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
       doc.setTextColor(80, 80, 80);
-      doc.text('RowOne Cinemas LLC', 125, 78.5);
+      doc.text('ROWONE Cinemas LLC', 125, 78.5);
       doc.text('Executive Cloud Billing Desk', 125, 84);
       doc.text('Gateway: Stripe Server API', 125, 89.5);
       doc.text('Support Desk: support@rowone.com', 125, 95);
@@ -224,7 +224,7 @@ export const PaymentHistorySection: React.FC<PaymentHistorySectionProps> = ({
       doc.text(`HASHED CRYPTOGRAPHIC SIGN_LOG: ${Math.random().toString(36).substring(2, 15).toUpperCase()} - SECURE INTEGRITY SEAL`, 15, 224);
 
       // Trigger automatic save in browser
-      doc.save(`RowOne_Receipt_${tx.id}.pdf`);
+      doc.save(`ROWONE_Receipt_${tx.id}.pdf`);
 
     } catch (err: any) {
       console.error('Invoice PDF compilation crashed:', err);

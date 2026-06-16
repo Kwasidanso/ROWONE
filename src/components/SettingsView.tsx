@@ -633,7 +633,7 @@ export default function SettingsView({
       doc.text('ROWONE Cinema Platform — Handcrafted Cinephile Communities.', 15, 266);
       doc.text('System Port: 3000 Ingress Router. This PDF invoice acts as a legally cleared proof of purchase.', 15, 271);
 
-      doc.save(`rowone-invoice-${tx.id || 'TX'}.pdf`);
+      doc.save(`ROWONE-invoice-${tx.id || 'TX'}.pdf`);
     } catch (err: any) {
       console.error('Failed to generate PDF:', err);
       alert('Error during client-side PDF generation: ' + err.message);

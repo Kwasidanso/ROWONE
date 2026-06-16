@@ -430,7 +430,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
         .maybeSingle();
 
       if (existingStudio) {
-        setAuthError(`The studio brand name "${studioName}" is already officially registered inside RowOne.`);
+        setAuthError(`The studio brand name "${studioName}" is already officially registered inside ROWONE.`);
         setIsSubmitting(false);
         return;
       }
@@ -444,7 +444,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
         .maybeSingle();
 
       if (existingProfile && !isExistingUserUpgrade) {
-        setAuthError("This email address is already associated with an active RowOne account.");
+        setAuthError("This email address is already associated with an active ROWONE account.");
         setIsSubmitting(false);
         return;
       }
@@ -726,7 +726,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
               </span>
               <h2 className="font-display text-2xl font-bold text-on-surface">Choose Account Type</h2>
               <p className="font-sans text-xs text-on-surface-variant max-w-xs mx-auto">
-                Select your preferred way to experience the RowOne Cinema platform.
+                Select your preferred way to experience the ROWONE Cinema platform.
               </p>
             </div>
 
@@ -1375,7 +1375,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
               </span>
               <h2 className="font-display text-2xl font-bold text-on-surface">Licensing Cleared</h2>
               <p className="font-sans text-xs text-on-surface-variant max-w-sm leading-relaxed lowercase">
-                your unique profile settings &amp; authorization status have been catalogued under system parameters. unlocking rowone high-end theater lounge complexes now...
+                your unique profile settings &amp; authorization status have been catalogued under system parameters. unlocking ROWONE high-end theater lounge complexes now...
               </p>
             </div>
 

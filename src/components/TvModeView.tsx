@@ -58,7 +58,7 @@ export default function TvModeView({
     { id: 'tv-1', username: 'CineLover_TV', text: 'This looks stunning in 4K HDR! 🍿', timestamp: '9:30 PM' },
     { id: 'tv-2', username: 'GamerGuy_90', text: 'Is the showrunner answering Q&A? 🎙️', timestamp: '9:31 PM' },
     { id: 'tv-3', username: 'Director_Fan', text: 'Stunning opening credits!', timestamp: '9:32 PM' },
-    { id: 'tv-4', username: 'RowOneChef', text: 'Virtual butter is extra salty tonight!', timestamp: '9:32 PM' },
+    { id: 'tv-4', username: 'ROWONE_Chef', text: 'Virtual butter is extra salty tonight!', timestamp: '9:32 PM' },
     { id: 'tv-5', username: 'NightOwler', text: 'Anyone else scanning from their sofa?', timestamp: '9:33 PM' }
   ]);
   const [newChatText, setNewChatText] = useState('');

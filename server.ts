@@ -468,7 +468,7 @@ app.post("/api/stripe/create-checkout-session", async (req: any, res: any) => {
             price_data: {
               currency: "usd",
               product_data: {
-                name: "RowOne Studio Distributor License",
+                name: "ROWONE Studio Distributor License",
                 description: "One-time registration license fees for DRC DRM broadcasting rights & customized grand theater lounges."
               },
               unit_amount: 4999,
@@ -1258,7 +1258,7 @@ app.post("/api/content/upload", async (req: any, res: any) => {
     sharesByPlatform: { whatsapp: 0, facebook: 0, x: 0, telegram: 0, email: 0, copy: 0 },
     referringSources: {},
     uniqueVisitors: [],
-    synopsis: synopsis || "An elite high-budget classic theatrical release uploaded via RowOne Studio.",
+    synopsis: synopsis || "An elite high-budget classic theatrical release uploaded via ROWONE Studio.",
     genre: genre || "CLASSIC",
     rating: rating || "PG-13",
     runtime: runtime || "2h 15m",
@@ -1461,7 +1461,7 @@ async function setupViteAndListen() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 RowOne Node full-stack integration server listening on http://localhost:${PORT}`);
+    console.log(`🌐 ROWONE Node full-stack integration server listening on http://localhost:${PORT}`);
   });
 }
 

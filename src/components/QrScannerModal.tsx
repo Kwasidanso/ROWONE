@@ -139,7 +139,7 @@ export default function QrScannerModal({ isOpen, onClose, onNavigateToContent }:
     }
   };
 
-  // Extract content slug/type payload from any RowOne format string
+  // Extract content slug/type payload from any ROWONE format string
   const handleFoundCode = (dataString: string) => {
     console.log('🔮 Target QR String Match:', dataString);
     playPulseBeep(1000, 0.25);
@@ -220,7 +220,7 @@ export default function QrScannerModal({ isOpen, onClose, onNavigateToContent }:
             if (code) {
               handleFoundCode(code.data);
             } else {
-              setScanError('Could not find a valid RowOne QR code inside this image. Ensure the image is crisp and well-lit.');
+              setScanError('Could not find a valid ROWONE QR code inside this image. Ensure the image is crisp and well-lit.');
             }
           } catch (err) {
             setScanError('Failed to read and process image metadata.');
@@ -389,7 +389,7 @@ export default function QrScannerModal({ isOpen, onClose, onNavigateToContent }:
                 </div>
                 <h4 className="mt-3 text-xs font-display font-medium text-white uppercase tracking-wide">Drop or Browse image file</h4>
                 <p className="text-[9px] font-sans font-bold text-zinc-500 lowercase mt-1 leading-relaxed px-4">
-                  select an exported screenshot, picture or code file pointing to a RowOne link
+                  select an exported screenshot, picture or code file pointing to a ROWONE link
                 </p>
               </label>
             </div>

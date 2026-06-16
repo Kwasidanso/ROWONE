@@ -535,7 +535,7 @@ export default function UpgradeModal({
                 <Lock className="h-3.5 w-3.5" />
                 <span>STRIPE SECURE ONE-CLICK CHECKOUT</span>
               </div>
-              <h3 className="font-display text-2xl font-black text-on-surface">Confirm RowOne Pass</h3>
+              <h3 className="font-display text-2xl font-black text-on-surface">Confirm ROWONE Pass</h3>
               <p className="font-sans text-xs text-on-surface-variant">
                 Process and activate your theater privileges instantly with full PCI compliance.
               </p>
@@ -854,7 +854,7 @@ export default function UpgradeModal({
                           className="h-4 w-4 bg-zinc-950 border-white/10 text-yellow-500 rounded focus:ring-0 focus:ring-offset-0 cursor-pointer"
                         />
                         <label htmlFor="saveCardCheckbox" className="font-sans text-[10.5px] text-on-surface-variant leading-snug cursor-pointer select-none">
-                          Save this card for future RowOne Pass purchases? <span className="text-yellow-400/80">(Allows 1-Click checkout)</span>
+                          Save this card for future ROWONE Pass purchases? <span className="text-yellow-400/80">(Allows 1-Click checkout)</span>
                         </label>
                       </div>
                     </div>
@@ -922,7 +922,7 @@ export default function UpgradeModal({
                 <span>GOLD USER PROFILE ACTIVATED</span>
                 <Star className="h-3 w-3 fill-yellow-400" />
               </div>
-              <h2 className="font-display text-3xl font-black text-on-surface tracking-tight">Welcome to RowOne Pass</h2>
+              <h2 className="font-display text-3xl font-black text-on-surface tracking-tight">Welcome to ROWONE Pass</h2>
               <p className="font-sans text-xs text-on-surface-variant leading-relaxed">
                 Congratulations! You are now subscribed. Unlimited catalogue streams, priority sync lobbies, and discounted premiere screening tickets ($4.99 only) have been unlocked for your Cinephile profile.
               </p>
