@@ -139,10 +139,11 @@ export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
               ease: [0.16, 1, 0.3, 1],
               delay: 1.4,
             }}
-            className="font-serif text-3xl sm:text-4xl text-[#eedecb] font-black uppercase tracking-widest relative ml-[0.62em]"
+            className="font-serif text-3xl sm:text-4xl font-black tracking-widest relative ml-[0.62em] group cursor-default transition-all duration-300"
             style={{ textShadow: '0 4px 20px rgba(0,0,0,0.9), 0 0 35px rgba(221,167,95,0.15)' }}
           >
-            ROWONE
+            <span className="text-[#dda75f] group-hover:text-[#fde2af] transition-all duration-300 group-hover:[text-shadow:0_0_12px_rgba(253,226,175,0.7)]">Row</span>
+            <span className="text-white group-hover:text-white/95 transition-all duration-300 group-hover:[text-shadow:0_0_10px_rgba(255,255,255,0.5)]">One</span>
           </motion.h1>
 
           {/* Golden Gate film stripes / Cinematic Subtitles staggered */}

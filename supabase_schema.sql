@@ -191,3 +191,39 @@ CREATE POLICY "Allow public read on studio-logos" ON storage.objects
 
 CREATE POLICY "Allow users to upload on studio-logos" ON storage.objects
   FOR INSERT WITH CHECK (bucket_id = 'studio-logos' AND auth.role() = 'authenticated');
+
+
+-- ==========================================
+-- 8. UPLOADED_CONTENT & ANALYTICS TABLES
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.uploaded_content (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  content_type TEXT NOT NULL CHECK (content_type IN ('movie', 'reel')),
+  creator_id TEXT,
+  original_video_url TEXT,
+  share_url TEXT NOT NULL,
+  qr_code_url TEXT,
+  upload_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  views INTEGER DEFAULT 0,
+  shares INTEGER DEFAULT 0,
+  link_clicks INTEGER DEFAULT 0,
+  qr_scans INTEGER DEFAULT 0,
+  shares_by_platform JSONB DEFAULT '{"whatsapp": 0, "facebook": 0, "x": 0, "telegram": 0, "email": 0, "copy": 0}'::jsonb,
+  referring_sources JSONB DEFAULT '{}'::jsonb,
+  unique_visitors JSONB DEFAULT '[]'::jsonb,
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- Enable RLS for uploaded_content
+ALTER TABLE public.uploaded_content ENABLE ROW LEVEL SECURITY;
+
+-- Select policies
+CREATE POLICY "Allow public read access to uploaded_content" ON public.uploaded_content
+  FOR SELECT USING (true);
+
+-- Insert/Update policies
+CREATE POLICY "Allow anyone to upsert uploaded_content" ON public.uploaded_content
+  FOR ALL USING (true);
+

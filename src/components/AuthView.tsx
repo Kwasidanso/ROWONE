@@ -474,17 +474,6 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
     setIsSubmitting(true);
     setAuthError(null);
 
-    if (cardNumber.replace(/\s/g, '').length < 16) {
-      setAuthError("Please specify a valid 16-digit credit card number.");
-      setIsSubmitting(false);
-      return;
-    }
-    if (!cardExpiry || !cardCvv || !billingName) {
-      setAuthError("Please complete all payment verification fields.");
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
       let activeUserId = currentUser?.id;
       let activeRegisteredEmail = isExistingUserUpgrade ? currentUser?.email : studioEmail;
@@ -522,7 +511,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
         owner_user_id: activeUserId,
         studio_name: studioName,
         logo_url: studioLogoUrl,
-        is_verified: false, // Starts as false and is activated after successful payment succeeds via the trigger RPC below
+        is_verified: false, // Starts as false and is activated after successful payment succeeds via Stripe checkout callback
         studio_phone: studioPhone,
         studio_address_street: studioStreet,
         studio_address_city: studioCity,
@@ -537,56 +526,37 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
         console.warn('Studios save error:', studioWriteErr.message);
       }
 
-      // 4. Record successful Payment transactions in `studio_payments` table
-      const refCode = 'PM_REG_' + Math.floor(Math.random() * 9000000 + 1000000);
-      await supabase.from('studio_payments').insert({
-        studio_id: activeUserId,
-        amount: 49.99,
-        status: 'success',
-        payment_reference: refCode
+      // 4. Create Stripe Checkout session for Studio Registration fee ($49.99)
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: activeUserId,
+          email: activeRegisteredEmail,
+          type: 'studio',
+          priceValue: '49.99'
+        })
       });
 
-      // 5. Invoke trigger activate function
-      try {
-        await supabase.rpc('activate_studio', {
-          studio_id: activeUserId,
-          payment_reference: refCode
-        });
-      } catch (triggerErr) {
-        console.warn('RPC activate_studio notification callback trigger ignored:', triggerErr);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to initialize secure Stripe checkout.');
       }
 
-      // Local storage synchronizations
-      localStorage.setItem('popcorn_account_type', 'studio');
-      localStorage.setItem('popcorn_studio_verified', 'true');
-
-      setStep('step-success');
-      setTimeout(() => {
-        onSuccess(
-          studioName,
-          'January 15, 1980',
-          46,
-          false,
-          'studio'
-        );
-      }, 2000);
+      const data = await response.json();
+      if (data.url) {
+        // Redirect to secure Stripe checkout
+        window.location.href = data.url;
+        return;
+      } else {
+        throw new Error('Secure checkout redirection link was empty.');
+      }
 
     } catch (err: any) {
-      console.warn('Supabase studio setup fallback walkthrough:', err.message || err);
-      
-      // Fallback sandbox success clearing for seamless UI evaluation
-      localStorage.setItem('popcorn_account_type', 'studio');
-      localStorage.setItem('popcorn_studio_verified', 'true');
-      setStep('step-success');
-      setTimeout(() => {
-        onSuccess(
-          studioName || 'CENTRAL FILM INDIE',
-          'January 15, 1980',
-          46,
-          false,
-          'studio'
-        );
-      }, 2000);
+      console.warn('Stripe checkout initializer issue:', err.message || err);
+      setAuthError(err.message || 'Payment provider handshake interrupted. Try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -1337,84 +1307,33 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
               </p>
             </div>
 
-            <form onSubmit={handlePaymentSubmit} className="space-y-4">
+             <form onSubmit={handlePaymentSubmit} className="space-y-4">
               
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-sans font-black tracking-widest text-on-surface-variant uppercase block">Billing Cardholder Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Christopher Nolan"
-                  value={billingName}
-                  onChange={(e) => setBillingName(e.target.value)}
-                  className="w-full bg-surface-container border border-[#dda75f]/25 rounded-xl px-4 py-2.5 text-xs text-on-surface focus:outline-none focus:border-[#dda75f]"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-sans font-black tracking-widest text-on-surface-variant uppercase block">Credit Card Number</label>
-                <div className="relative flex items-center bg-surface-container border border-[#dda75f]/25 rounded-xl px-4 py-1">
-                  <CreditCard className="h-4 w-4 text-on-surface-variant mr-3 shrink-0" />
-                  <input
-                    type="text"
-                    required
-                    maxLength={19}
-                    placeholder="4000 1234 5678 9010"
-                    value={cardNumber}
-                    onChange={(e) => {
-                      // Formatting spaces
-                      const raw = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                      const parts = [];
-                      for (let i = 0; i < raw.length; i += 4) {
-                        parts.push(raw.substring(i, i + 4));
-                      }
-                      setCardNumber(parts.length > 0 ? parts.join(' ') : '');
-                    }}
-                    className="w-full bg-transparent border-none text-xs text-on-surface focus:outline-none py-2 placeholder:text-surface-variant"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-sans font-black tracking-widest text-on-surface-variant uppercase block">Expiration Date</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={5}
-                    placeholder="MM/YY"
-                    value={cardExpiry}
-                    onChange={(e) => {
-                      const inputVal = e.target.value.replace(/[^0-9]/g, '');
-                      if (inputVal.length >= 2) {
-                        setCardExpiry(inputVal.substring(0, 2) + '/' + inputVal.substring(2, 4));
-                      } else {
-                        setCardExpiry(inputVal);
-                      }
-                    }}
-                    className="w-full bg-surface-container border border-[#dda75f]/25 rounded-xl px-4 py-2.5 text-xs text-on-surface focus:outline-none focus:border-[#dda75f]"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-sans font-black tracking-widest text-on-surface-variant uppercase block">Security Code CVV</label>
-                  <input
-                    type="password"
-                    required
-                    maxLength={4}
-                    placeholder="123"
-                    value={cardCvv}
-                    onChange={(e) => setCardCvv(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="w-full bg-surface-container border border-[#dda75f]/25 rounded-xl px-4 py-2.5 text-xs text-on-surface focus:outline-none focus:border-[#dda75f]"
-                  />
-                </div>
+              {/* Premium Features List unlocked */}
+              <div className="bg-[#0c0c0c] border border-white/5 rounded-2xl p-4.5 space-y-4 leading-relaxed">
+                <span className="text-[10px] font-sans font-black tracking-wider text-on-surface-variant uppercase block">Distributor Utilities Unlocked:</span>
+                <ul className="space-y-2.5 text-xs text-gray-300">
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-[#dda75f] font-bold mt-0.5">•</span>
+                    <span className="lowercase">vetted studio badge beside all scheduled grand cinema lounge screening events.</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-[#dda75f] font-bold mt-0.5">•</span>
+                    <span className="lowercase">full access to DRM encrypted distribution servers (DRC) to host customizable shows.</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="text-[#dda75f] font-bold mt-0.5">•</span>
+                    <span className="lowercase">collect film studio revenue with automated checkout receipts.</span>
+                  </li>
+                </ul>
               </div>
 
               {/* Secure lock trust badge layout */}
               <div className="p-3.5 bg-emerald-950/15 border border-emerald-500/20 rounded-xl flex items-center gap-3 select-none">
                 <Lock className="h-4 w-4 text-emerald-400 shrink-0" />
                 <div className="font-sans text-[10px] text-emerald-300">
-                  <span className="font-extrabold uppercase tracking-widest block text-[9px]">Secure Payment Gateway</span>
-                  <span className="opacity-80 leading-normal block lowercase text-gray-400">your credit card credentials are processed with bank-level hardware encryption standard.</span>
+                  <span className="font-extrabold uppercase tracking-widest block text-[9px]">Official Stripe Checkout integration</span>
+                  <span className="opacity-80 leading-normal block lowercase text-gray-400">credentials, charges, and recurring receipts are processed securely by stripe. no raw card details touch our servers.</span>
                 </div>
               </div>
 
@@ -1435,7 +1354,7 @@ export default function AuthView({ onSuccess, onClose, initialMode }: AuthViewPr
                   {isSubmitting ? (
                     <span className="h-4 w-4 rounded-full border-2 border-slate-950 border-t-transparent animate-spin"></span>
                   ) : (
-                    <span>Decline &amp; Pay $49.99</span>
+                    <span>Proceed to Stripe Checkout ($49.99)</span>
                   )}
                 </button>
               </div>

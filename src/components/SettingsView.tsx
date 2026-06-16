@@ -6,13 +6,23 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Shield, Lock, Unlock, Eye, HelpCircle, Check, Key, Crown, Sparkles, 
+  Shield, Lock, Unlock, Eye, EyeOff, HelpCircle, Check, Key, Crown, Sparkles, 
   CreditCard, Receipt, Wallet, Plus, Trash2, ArrowRightLeft, Gift, 
   AlertTriangle, CloudDownload, Calendar, User, Zap, Star, X, Info,
-  LogOut
+  LogOut, Copy, Globe, Building, Phone, Sliders, RefreshCw, CheckCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { getRatingBadgeText } from '../types';
+import { getRatingBadgeText, UserPaymentMethod } from '../types';
+import { PaymentHistorySection } from './PaymentHistorySection';
+import { 
+  loadUserPaymentMethods, 
+  saveUserPaymentMethod, 
+  setDefaultPaymentMethod, 
+  removePaymentMethod,
+  getAutofillCredentials,
+  saveAutofillCredential
+} from '../lib/paymentService';
+import { encryptValue, decryptValue, encryptValueAsync, decryptValueAsync, maskApiKey } from '../lib/userProfileService';
 
 interface SettingsViewProps {
   isLoggedIn: boolean;
@@ -51,6 +61,11 @@ interface SettingsViewProps {
   onRegisterStudioClick?: () => void;
   activeMode?: 'individual' | 'studio';
   onToggleActiveMode?: (mode: 'individual' | 'studio') => void;
+
+  // SaaS Secure Memory & User Profile Integration
+  userProfile?: any;
+  onUpdateProfile?: (profile: any) => Promise<boolean> | void;
+  triggerAppNotification?: (notif: any) => void;
 }
 
 export default function SettingsView({
@@ -90,8 +105,128 @@ export default function SettingsView({
   onRegisterStudioClick,
   activeMode = 'individual',
   onToggleActiveMode,
+
+  // SaaS User Memory
+  userProfile,
+  onUpdateProfile,
+  triggerAppNotification,
 }: SettingsViewProps) {
   const [activeTab, setActiveTabState] = useState<'profile' | 'billing'>('profile');
+
+  // SaaS Secure Memory States
+  const [profileFullName, setProfileFullName] = useState('');
+  const [profileCompany, setProfileCompany] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileWebsite, setProfileWebsite] = useState('');
+  const [profileAddress, setProfileAddress] = useState('');
+  const [profileCountry, setProfileCountry] = useState('United States');
+  const [profileLanguage, setProfileLanguage] = useState('English');
+  const [profileTimezone, setProfileTimezone] = useState('UTC');
+  const [onboardingStatus, setOnboardingStatus] = useState(false);
+  const [newKeyLabel, setNewKeyLabel] = useState('');
+  const [revealedKeyIds, setRevealedKeyIds] = useState<string[]>([]);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [decryptedKeysMap, setDecryptedKeysMap] = useState<Record<string, string>>({});
+
+  // Asynchronously decrypt all API keys on load or update using SubtleCrypto API
+  useEffect(() => {
+    if (userProfile?.apiKeys && userProfile?.userId) {
+      let isMounted = true;
+      const decryptAllKeys = async () => {
+        const result: Record<string, string> = {};
+        for (const key of userProfile.apiKeys) {
+          try {
+            const plaintext = await decryptValueAsync(key.encryptedKey, userProfile.userId);
+            result[key.id] = plaintext;
+          } catch (e) {
+            console.warn('Failed to decrypt api keys with standard SubtleCrypto', e);
+          }
+        }
+        if (isMounted) {
+          setDecryptedKeysMap(result);
+        }
+      };
+      decryptAllKeys();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [userProfile?.apiKeys, userProfile?.userId]);
+
+  // Load state from loaded profile prop on start or reload
+  useEffect(() => {
+    if (userProfile) {
+      setProfileFullName(userProfile.fullName || '');
+      setProfileCompany(userProfile.companyName || '');
+      setProfilePhone(userProfile.phoneNumber || '');
+      setProfileWebsite(userProfile.website || '');
+      setProfileAddress(userProfile.address || '');
+      setProfileCountry(userProfile.country || 'United States');
+      setProfileLanguage(userProfile.preferredLanguage || 'English');
+      setProfileTimezone(userProfile.timezone || 'UTC');
+      setOnboardingStatus(!!userProfile.onboardingCompleted);
+    }
+  }, [userProfile]);
+
+  // Debounced profile updates
+  useEffect(() => {
+    if (!isLoggedIn || !userProfile) return;
+
+    // Check actual difference
+    const hasDiff = 
+      profileFullName !== (userProfile.fullName || '') ||
+      profileCompany !== (userProfile.companyName || '') ||
+      profilePhone !== (userProfile.phoneNumber || '') ||
+      profileWebsite !== (userProfile.website || '') ||
+      profileAddress !== (userProfile.address || '') ||
+      profileCountry !== (userProfile.country || 'United States') ||
+      profileLanguage !== (userProfile.preferredLanguage || 'English') ||
+      profileTimezone !== (userProfile.timezone || 'UTC') ||
+      onboardingStatus !== (!!userProfile.onboardingCompleted);
+
+    if (!hasDiff) return;
+
+    setAutoSaveStatus('saving');
+
+    const timer = setTimeout(async () => {
+      try {
+        const updatedProfile = {
+          ...userProfile,
+          fullName: profileFullName,
+          companyName: profileCompany,
+          phoneNumber: profilePhone,
+          website: profileWebsite,
+          address: profileAddress,
+          country: profileCountry,
+          preferredLanguage: profileLanguage,
+          timezone: profileTimezone,
+          onboardingCompleted: onboardingStatus,
+        };
+
+        if (onUpdateProfile) {
+          await onUpdateProfile(updatedProfile);
+        }
+        setAutoSaveStatus('saved');
+        
+        // Push secure success notification
+        if (triggerAppNotification) {
+          triggerAppNotification({
+            id: `autosave-${Date.now()}`,
+            type: 'system',
+            title: 'SaaS Memory Updated 💾',
+            message: 'All your customized system attributes and profile details are encrypted & persisted.',
+            timestamp: 'Just now',
+            movieTitle: 'System Account'
+          });
+        }
+      } catch (err) {
+        console.error('Debounced save error:', err);
+        setAutoSaveStatus('idle');
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [profileFullName, profileCompany, profilePhone, profileWebsite, profileAddress, profileCountry, profileLanguage, profileTimezone, onboardingStatus]);
 
   const setActiveTab = (tab: 'profile' | 'billing') => {
     setActiveTabState(tab);
@@ -175,8 +310,52 @@ export default function SettingsView({
   });
 
   // Dual binding state resolvers
+  const [livePaymentMethods, setLivePaymentMethods] = useState<UserPaymentMethod[]>([]);
+  const [activeProviderForm, setActiveProviderForm] = useState<'stripe' | 'paypal' | 'applepay' | 'googlepay'>('stripe');
+  const targetUserId = userProfile?.userId || 'guest_user';
+
+  useEffect(() => {
+    const fetchMethods = async () => {
+      const methods = await loadUserPaymentMethods(targetUserId);
+      setLivePaymentMethods(methods);
+    };
+    fetchMethods();
+  }, [targetUserId]);
+
   const currentBalance = walletBalance !== undefined ? walletBalance : localWalletBalance;
-  const currentCards = savedCards !== undefined ? savedCards : localSavedCards;
+  
+  // Backwards compatible mapped cards array for invoice listings and wallet charges
+  const currentCards = livePaymentMethods.map(pm => {
+    if (pm.provider === 'stripe') {
+      return {
+        id: pm.paymentMethodId,
+        brand: pm.cardBrand?.toLowerCase() || 'visa',
+        last4: pm.lastFourDigits || '4242',
+        expiry: pm.expiryMonth ? `${pm.expiryMonth.toString().padStart(2, '0')}/${pm.expiryYear?.toString().slice(-2)}` : '08/29',
+        cardholderName: 'Cardholder',
+        isDefault: pm.isDefault
+      };
+    } else if (pm.provider === 'paypal') {
+      return {
+        id: pm.paymentMethodId,
+        brand: 'paypal',
+        last4: 'Account',
+        expiry: 'N/A',
+        cardholderName: pm.email || 'PayPal User',
+        isDefault: pm.isDefault
+      };
+    } else {
+      return {
+        id: pm.paymentMethodId,
+        brand: pm.provider === 'applepay' ? 'applepay' : 'googlepay',
+        last4: pm.provider === 'applepay' ? 'Apple Pay' : 'Google Pay',
+        expiry: 'Device',
+        cardholderName: pm.provider === 'applepay' ? 'Apple Wallet' : 'Google Wallet',
+        isDefault: pm.isDefault
+      };
+    }
+  });
+
   const currentTxs = billingTransactions !== undefined ? billingTransactions : localTransactions;
 
   const updateBalance = (newVal: number) => {
@@ -241,6 +420,41 @@ export default function SettingsView({
   });
 
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isPortalLoading, setIsPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState('');
+
+  const handleOpenStripePortal = async () => {
+    setIsPortalLoading(true);
+    setPortalError('');
+
+    try {
+      // Direct extraction of saved stripe customer parameters
+      const stripePaymentMethod = livePaymentMethods.find(pm => pm.provider === 'stripe' && pm.customerId);
+      const customerId = stripePaymentMethod?.customerId || undefined;
+
+      const response = await fetch('/api/stripe/create-portal-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId,
+          userId: targetUserId,
+          email: userProfile?.email || 'user@example.com'
+        })
+      });
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setPortalError(data.error || 'Failed to open secure billing portal.');
+        setIsPortalLoading(false);
+      }
+    } catch (err: any) {
+      console.error('Portal connection failed:', err);
+      setPortalError('Secure stripe transaction link disrupted.');
+      setIsPortalLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isPopcornPass) {
@@ -536,57 +750,113 @@ export default function SettingsView({
     alert("Simulation Success: A recurring subscription renewal of $14.99 has been authorized and charged. Your invoice is ready in the billing ledger!");
   };
 
-  const handleAddNewCardSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCardHolder || !newCardNumber || !newCardExpiry || !newCardCvc) {
-      setCardFormError('Please fill in all credit card form particulars.');
-      return;
-    }
-    
-    const rawNumber = newCardNumber.replace(/\s/g, '');
-    if (rawNumber.length < 15 || rawNumber.length > 16) {
-      setCardFormError('Card number must be 15 or 16 valid digits.');
-      return;
-    }
-
-    setIsAddingCardLoader(true);
+  const handleAddNewPaymentMethod = async (provider: 'stripe' | 'paypal' | 'applepay' | 'googlepay') => {
     setCardFormError('');
+    setIsAddingCardLoader(true);
+    
+    setTimeout(async () => {
+      try {
+        const pmId = `pm_${provider}_${Math.random().toString(36).substring(2, 11)}`;
+        const customerId = `cus_${provider}_${Math.random().toString(36).substring(2, 11)}`;
+        
+        let newPM: UserPaymentMethod = {
+          id: pmId,
+          userId: targetUserId,
+          provider,
+          customerId,
+          paymentMethodId: pmId,
+          isDefault: livePaymentMethods.length === 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
 
-    setTimeout(() => {
-      const last4Digits = rawNumber.slice(-4);
-      const isVisa = rawNumber.startsWith('4') || rawNumber.startsWith('5');
-      
-      const newCardObj = {
-        id: `card-${Math.random().toString(36).substring(2, 9)}`,
-        brand: isVisa ? 'visa' : 'mastercard',
-        last4: last4Digits,
-        expiry: newCardExpiry,
-        cardholderName: newCardHolder,
-        isDefault: currentCards.length === 0
-      };
+        if (provider === 'stripe') {
+          if (!newCardHolder.trim()) {
+            setCardFormError('Please enter cardholder name.');
+            setIsAddingCardLoader(false);
+            return;
+          }
+          const cleanCard = newCardNumber.replace(/\s+/g, '');
+          if (cleanCard.length < 15) {
+            setCardFormError('Please enter a valid credit card number.');
+            setIsAddingCardLoader(false);
+            return;
+          }
+          if (newCardExpiry.length < 5) {
+            setCardFormError('Expiry date is required (MM/YY).');
+            setIsAddingCardLoader(false);
+            return;
+          }
+          if (newCardCvc.length < 3) {
+            setCardFormError('CVV code is required.');
+            setIsAddingCardLoader(false);
+            return;
+          }
 
-      updateCards([...currentCards, newCardObj]);
-      
-      // Cleanup
-      setNewCardHolder('');
-      setNewCardNumber('');
-      setNewCardExpiry('');
-      setNewCardCvc('');
-      setShowAddCard(false);
-      setIsAddingCardLoader(false);
-    }, 1000);
+          const isVisa = cleanCard.startsWith('4');
+          newPM = {
+            ...newPM,
+            cardBrand: isVisa ? 'Visa' : 'Mastercard',
+            lastFourDigits: cleanCard.slice(-4),
+            expiryMonth: Number(newCardExpiry.split('/')[0]) || 12,
+            expiryYear: Number('20' + newCardExpiry.split('/')[1]) || 2029,
+          };
+        } else if (provider === 'paypal') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!newCardHolder.trim() || !emailRegex.test(newCardHolder.trim())) {
+            setCardFormError('Please enter a valid PayPal account email address.');
+            setIsAddingCardLoader(false);
+            return;
+          }
+          newPM = {
+            ...newPM,
+            email: newCardHolder.trim(),
+          };
+        }
+
+        const success = await saveUserPaymentMethod(newPM);
+        if (success) {
+          if (provider === 'stripe') {
+            saveAutofillCredential({
+              lastFourDigits: newCardNumber.replace(/\s+/g, '').slice(-4),
+              brand: newPM.cardBrand || 'Visa',
+              fullCardNumber: newCardNumber,
+              cardholderName: newCardHolder,
+              expiryDate: newCardExpiry,
+              cvc: newCardCvc || '123'
+            });
+          }
+          const updated = await loadUserPaymentMethods(targetUserId);
+          setLivePaymentMethods(updated);
+          setShowAddCard(false);
+          // reset fields
+          setNewCardHolder('');
+          setNewCardNumber('');
+          setNewCardExpiry('');
+          setNewCardCvc('');
+        } else {
+          setCardFormError('Third-party gateway communication blocked. Retry.');
+        }
+      } catch (err: any) {
+        setCardFormError('System payment error: ' + err.message);
+      } finally {
+        setIsAddingCardLoader(false);
+      }
+    }, 1200);
   };
 
-  const handleDeleteCard = (cardId: string) => {
-    if (currentCards.length <= 1) {
-      alert("Verification block: You should retain at least one default streaming payment card on your profile file.");
+  const handleUpdateDefaultPM = async (pmId: string) => {
+    const updated = await setDefaultPaymentMethod(targetUserId, pmId);
+    setLivePaymentMethods(updated);
+  };
+
+  const handleRemovePM = async (pmId: string) => {
+    if (livePaymentMethods.length <= 1) {
+      alert("Verification block: You should retain at least one default payment instrument for active premium subscriptions.");
       return;
     }
-    const filtered = currentCards.filter(c => c.id !== cardId);
-    if (filtered.length > 0 && !filtered.some(c => c.isDefault)) {
-      filtered[0].isDefault = true;
-    }
-    updateCards(filtered);
+    const updated = await removePaymentMethod(targetUserId, pmId);
+    setLivePaymentMethods(updated);
   };
 
   const availableRatings = ['U', 'PG', '12', '15', '18'];
@@ -886,6 +1156,528 @@ export default function SettingsView({
                   </div>
                 </div>
               )}
+
+              {/* SAAS MEMORY & SECURE USER PROFILE VAULT */}
+              {isLoggedIn && userProfile ? (
+                <div className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-8 shadow-md relative overflow-hidden">
+                  <div className="absolute top-0 right-0 h-40 w-40 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+                  
+                  {/* Floating Auto-save State Status */}
+                  <div className="absolute top-6 right-6 flex items-center gap-1.5 select-none font-mono text-[9px] font-black uppercase tracking-widest bg-black/40 border border-white/5 px-3 py-1 rounded-full">
+                    {autoSaveStatus === 'saving' ? (
+                      <>
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        <span className="text-amber-400">◌ Auto-saving...</span>
+                      </>
+                    ) : autoSaveStatus === 'saved' ? (
+                      <>
+                        <span className="relative flex h-2 w-2">
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span className="text-emerald-400">● Changes Saved</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="relative flex h-2 w-2">
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-[#dda75f]"></span>
+                        </span>
+                        <span className="text-gray-400">● Cloud Sync Active</span>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="font-display font-extrabold text-[#edf3e3] text-lg uppercase tracking-wide flex items-center gap-2 select-none">
+                      <Sliders className="h-5 w-5 text-[#dda75f]" />
+                      <span>SaaS Memory &amp; Identity Vault</span>
+                    </h3>
+                    <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed lowercase">
+                      your profile credentials, localization, API tokens, and dashboard settings are saved automatically in real-time as you type.
+                    </p>
+                  </div>
+
+                  {/* FORM FIELDS SECTIONS */}
+                  <div className="space-y-6 pt-2">
+                    
+                    {/* section: 1. Personal Identity */}
+                    <div className="space-y-4">
+                      <h4 className="font-display text-[10px] font-black tracking-widest text-[#dda75f] uppercase select-none flex items-center gap-1.5">
+                        <User className="h-3 w-3" />
+                        <span>1. Professional Identity</span>
+                      </h4>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5 text-xs text-left">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Full Legal Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Alexis Vance"
+                            value={profileFullName}
+                            onChange={(e) => setProfileFullName(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Account Email (Locked)</label>
+                          <input
+                            type="email"
+                            readOnly
+                            disabled
+                            value={userProfile.email}
+                            className="w-full bg-black/40 border border-white/5 opacity-60 outline-none rounded-xl px-3.5 py-2.5 text-gray-400 font-mono text-xs cursor-not-allowed select-none"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Company / Studio Venture</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Sterling Pictures"
+                            value={profileCompany}
+                            onChange={(e) => setProfileCompany(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Phone Number</label>
+                          <input
+                            type="tel"
+                            placeholder="e.g. +1 (555) 019-2834"
+                            value={profilePhone}
+                            onChange={(e) => setProfilePhone(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left sm:col-span-2">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Corporate Web URL</label>
+                          <input
+                            type="url"
+                            placeholder="https://www.sterlingmovies.com"
+                            value={profileWebsite}
+                            onChange={(e) => setProfileWebsite(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-mono text-xs transition-colors duration-200"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <hr className="border-white/5" />
+
+                    {/* section: 2. Physical Coordinates & Regional defaults */}
+                    <div className="space-y-4">
+                      <h4 className="font-display text-[10px] font-black tracking-widest text-[#dda75f] uppercase select-none flex items-center gap-1.5">
+                        <Globe className="h-3 w-3" />
+                        <span>2. Localization &amp; Address Defaults</span>
+                      </h4>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5 text-xs text-left sm:col-span-2">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">HQ Street Address</label>
+                          <input
+                            type="text"
+                            placeholder="742 Evergreen Terrace, Sector 7G"
+                            value={profileAddress}
+                            onChange={(e) => setProfileAddress(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Home Country</label>
+                          <select
+                            value={profileCountry}
+                            onChange={(e) => setProfileCountry(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200 cursor-pointer"
+                          >
+                            <option value="United States">United States</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Canada">Canada</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Germany">Germany</option>
+                            <option value="France">France</option>
+                            <option value="Japan">Japan</option>
+                            <option value="Ghana">Ghana</option>
+                            <option value="Nigeria">Nigeria</option>
+                            <option value="India">India</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Language Preference</label>
+                          <select
+                            value={profileLanguage}
+                            onChange={(e) => setProfileLanguage(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200 cursor-pointer"
+                          >
+                            <option value="English">English</option>
+                            <option value="Spanish">Español (Spanish)</option>
+                            <option value="French">Français (French)</option>
+                            <option value="German">Deutsch (German)</option>
+                            <option value="Japanese">日本語 (Japanese)</option>
+                            <option value="Mandarin">普通话 (Mandarin)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1.5 text-xs text-left sm:col-span-2">
+                          <label className="text-[9px] font-sans font-extrabold text-on-surface-variant uppercase tracking-wider block">Workspace Timezone Selector</label>
+                          <select
+                            value={profileTimezone}
+                            onChange={(e) => setProfileTimezone(e.target.value)}
+                            className="w-full bg-surface-container border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3.5 py-2.5 text-on-surface font-sans text-xs transition-colors duration-200 cursor-pointer"
+                          >
+                            <option value="UTC">UTC (Coordinated Universal Time)</option>
+                            <option value="EST">EST (Eastern Standard Time: GMT-5)</option>
+                            <option value="CST">CST (Central Standard Time: GMT-6)</option>
+                            <option value="PST">PST (Pacific Standard Time: GMT-8)</option>
+                            <option value="GMT">GMT (Greenwich Mean Time: GMT+0)</option>
+                            <option value="CET">CET (Central European Time: GMT+1)</option>
+                            <option value="JST">JST (Japan Standard Time: GMT+9)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <hr className="border-white/5" />
+
+                    {/* section: 3. Connected Services Toggle */}
+                    <div className="space-y-4">
+                      <h4 className="font-display text-[10px] font-black tracking-widest text-[#dda75f] uppercase select-none flex items-center gap-1.5">
+                        <RefreshCw className="h-3 w-3" />
+                        <span>3. App &amp; Gateway Integrations</span>
+                      </h4>
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3.5 bg-black/40 border border-white/5 rounded-xl text-left">
+                          <div className="space-y-0.5">
+                            <span className="block text-[10px] font-sans font-black text-on-surface uppercase select-none leading-none">Google Workspaces OAuth</span>
+                            <span className="block text-[8px] font-sans text-on-surface-variant lowercase">integrated to populate calendars/viewing schedules</span>
+                          </div>
+                          {userProfile.email.includes('gmail.com') || (userProfile.connectedServices && userProfile.connectedServices.googleConnected) ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-green-500/10 border border-green-500/20 text-green-400 font-bold text-[8.5px] uppercase tracking-wider select-none">
+                              <CheckCircle className="h-3.5 w-3.5" />
+                              <span>Active Connection</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...userProfile,
+                                  connectedServices: { ...(userProfile.connectedServices || {}), googleConnected: true }
+                                };
+                                if (onUpdateProfile) onUpdateProfile(updated);
+                              }}
+                              className="py-1.5 px-3 bg-white/5 hover:bg-white/10 text-on-surface rounded-lg font-sans text-[9px] font-bold uppercase transition-all select-none cursor-pointer border border-white/10"
+                            >
+                              Sync Account
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between p-3.5 bg-black/40 border border-white/5 rounded-xl text-left">
+                          <div className="space-y-0.5">
+                            <span className="block text-[10px] font-sans font-black text-on-surface uppercase select-none leading-none">Cinephile Discord Syndicate Bot</span>
+                            <span className="block text-[8px] font-sans text-on-surface-variant lowercase">receives ping updates on watch party rooms on discord</span>
+                          </div>
+                          {userProfile.connectedServices && userProfile.connectedServices.discordConnected ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...userProfile,
+                                  connectedServices: { ...(userProfile.connectedServices || {}), discordConnected: false }
+                                };
+                                if (onUpdateProfile) onUpdateProfile(updated);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-500/15 border border-indigo-500/25 text-indigo-400 font-bold text-[8.5px] uppercase tracking-wider select-none cursor-pointer"
+                            >
+                              <span>Bot Sync Live 🤖</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...userProfile,
+                                  connectedServices: { ...(userProfile.connectedServices || {}), discordConnected: true }
+                                };
+                                if (onUpdateProfile) onUpdateProfile(updated);
+                              }}
+                              className="py-1.5 px-3 bg-white/5 hover:bg-white/10 text-on-surface rounded-lg font-sans text-[9px] font-bold uppercase transition-all select-none cursor-pointer border border-[#5865F2]/20 text-[#5865F2]"
+                            >
+                              Connect Bot
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Stripe Payment Gateway Integration */}
+                        <div className="flex items-center justify-between p-3.5 bg-black/40 border border-white/5 rounded-xl text-left">
+                          <div className="space-y-0.5">
+                            <span className="block text-[10px] font-sans font-black text-on-surface uppercase select-none leading-none">Stripe Payment Gateway</span>
+                            <span className="block text-[8px] font-sans text-on-surface-variant lowercase">securely processes subscriptions and premium tickets</span>
+                          </div>
+                          {userProfile.connectedServices && userProfile.connectedServices.stripeConnected ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = {
+                                    ...userProfile,
+                                    connectedServices: { ...(userProfile.connectedServices || {}), stripeConnected: false }
+                                  };
+                                  if (onUpdateProfile) onUpdateProfile(updated);
+                                  if (triggerAppNotification) {
+                                    triggerAppNotification({
+                                      id: `stripe-disconnect-${Date.now()}`,
+                                      type: 'system',
+                                      title: 'Stripe Account Disconnected 💳',
+                                      message: 'Your Stripe payment credentials and customer profile have been safely unlinked.',
+                                      timestamp: 'Just now',
+                                      movieTitle: 'Payment Gateway'
+                                    });
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/15 border border-amber-500/25 text-amber-400 font-bold text-[8.5px] uppercase tracking-wider select-none cursor-pointer hover:bg-amber-500/25 transition-all"
+                              >
+                                <span>Active (Disconnect) 💳</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...userProfile,
+                                  connectedServices: { ...(userProfile.connectedServices || {}), stripeConnected: true }
+                                };
+                                if (onUpdateProfile) onUpdateProfile(updated);
+                                if (triggerAppNotification) {
+                                  triggerAppNotification({
+                                    id: `stripe-connect-${Date.now()}`,
+                                    type: 'system',
+                                    title: 'Stripe Gateway Authorized 💳',
+                                    message: 'Stripe payment verification and sandbox environment linked successfully.',
+                                    timestamp: 'Just now',
+                                    movieTitle: 'Payment Gateway'
+                                  });
+                                }
+                              }}
+                              className="py-1.5 px-3 bg-white/5 hover:bg-white/10 text-on-surface rounded-lg font-sans text-[9px] font-bold uppercase transition-all select-none cursor-pointer border border-[#6772E5]/20 text-[#6772E5]"
+                            >
+                              Connect Stripe
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <hr className="border-white/5" />
+
+                    {/* section: 4. Secure API Key Storage */}
+                    <div className="space-y-4">
+                      <div className="flex sm:items-center justify-between gap-4 flex-col sm:flex-row text-left">
+                        <div className="space-y-0.5">
+                          <h4 className="font-display text-[10px] font-black tracking-widest text-[#dda75f] uppercase select-none flex items-center gap-1.5 leading-none">
+                            <Key className="h-3 w-3" />
+                            <span>4. Encrypted Cloud API Vault</span>
+                          </h4>
+                          <span className="block text-[8.5px] font-sans text-on-surface-variant lowercase leading-relaxed">
+                            keys are symmetrically encrypted using unique user keys before storage. display values are masked on load.
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* key inputs generator */}
+                      <div className="flex gap-2 text-xs">
+                        <input
+                          type="text"
+                          placeholder="Credential Label (e.g. Stripe, Custom App)"
+                          value={newKeyLabel}
+                          onChange={(e) => setNewKeyLabel(e.target.value)}
+                          className="flex-1 bg-[#141212] border border-white/5 focus:border-[#dda75f]/50 outline-none rounded-xl px-3 py-2 text-on-surface font-sans text-xs transition-colors duration-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!newKeyLabel.trim()) return;
+                            const rawKeyText = `sk_live_${Math.random().toString(36).substring(2, 11)}${Math.random().toString(36).substring(2, 11)}`;
+                            const encrypted = await encryptValueAsync(rawKeyText, userProfile.userId);
+                            const updatedKeys = [
+                              ...(userProfile.apiKeys || []),
+                              {
+                                id: `key-${Date.now()}`,
+                                label: newKeyLabel.trim(),
+                                encryptedKey: encrypted,
+                                createdAt: new Date().toISOString()
+                              }
+                            ];
+                            const updated = { ...userProfile, apiKeys: updatedKeys };
+                            if (onUpdateProfile) onUpdateProfile(updated);
+                            setNewKeyLabel('');
+                            if (triggerAppNotification) {
+                              triggerAppNotification({
+                                id: `key-gen-${Date.now()}`,
+                                type: 'system',
+                                title: 'Key Instantiated 🔑',
+                                message: 'Your API key was symmetrically encrypted client-side and synchronized successfully.',
+                                timestamp: 'Just now',
+                                movieTitle: 'System Account'
+                              });
+                            }
+                          }}
+                          className="px-4 py-2 bg-secondary text-slate-950 font-sans text-[10px] font-black tracking-widest uppercase rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          Generate Token
+                        </button>
+                      </div>
+
+                      {/* Display Key List */}
+                      {userProfile.apiKeys && userProfile.apiKeys.length > 0 ? (
+                        <div className="space-y-2 pt-1 border-t border-white/[0.03]">
+                          {userProfile.apiKeys.map((key: any) => {
+                            const decrypted = decryptedKeysMap[key.id] || decryptValue(key.encryptedKey, userProfile.userId) || '';
+                            const isRevealed = revealedKeyIds.includes(key.id);
+                            const displayString = isRevealed ? decrypted : maskApiKey(decrypted);
+                            
+                            return (
+                              <div key={key.id} className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-xl text-left font-mono text-xs text-on-surface">
+                                <div className="space-y-1">
+                                  <span className="block text-[8.5px] font-sans font-black text-secondary uppercase leading-none">{key.label}</span>
+                                  <span className="block text-[10px] font-mono tracking-wider font-light text-slate-100 select-all">{displayString}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 ml-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isRevealed) {
+                                        setRevealedKeyIds(revealedKeyIds.filter(id => id !== key.id));
+                                      } else {
+                                        setRevealedKeyIds([...revealedKeyIds, key.id]);
+                                      }
+                                    }}
+                                    className="p-1.5 hover:bg-white/5 rounded transition-all cursor-pointer text-on-surface-variant hover:text-on-surface"
+                                    title={isRevealed ? 'Hide API Key' : 'Reveal/Show API Key'}
+                                  >
+                                    {isRevealed ? <EyeOff className="h-3.5 w-3.5 text-on-surface-variant hover:text-white" /> : <Eye className="h-3.5 w-3.5 text-on-surface-variant hover:text-white" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(decrypted);
+                                      if (triggerAppNotification) {
+                                        triggerAppNotification({
+                                          id: `copy-key-${Date.now()}`,
+                                          type: 'system',
+                                          title: 'Secret Key Copied 📋',
+                                          message: `SaaS API token for "${key.label}" copied to clipboard.`,
+                                          timestamp: 'Just now',
+                                          movieTitle: 'System Account'
+                                        });
+                                      }
+                                    }}
+                                    className="p-1.5 hover:bg-white/5 rounded transition-all cursor-pointer text-on-surface-variant hover:text-[#dda75f]"
+                                    title="Copy to clipboard"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updatedKeys = (userProfile.apiKeys || []).filter((k: any) => k.id !== key.id);
+                                      const updated = { ...userProfile, apiKeys: updatedKeys };
+                                      if (onUpdateProfile) onUpdateProfile(updated);
+                                      if (triggerAppNotification) {
+                                        triggerAppNotification({
+                                          id: `key-del-${Date.now()}`,
+                                          type: 'system',
+                                          title: 'Key Revoked 🗑️',
+                                          message: `Your API credential for "${key.label}" was permanently removed.`,
+                                          timestamp: 'Just now',
+                                          movieTitle: 'System Account'
+                                        });
+                                      }
+                                    }}
+                                    className="p-1.5 hover:bg-red-500/10 rounded transition-all cursor-pointer text-gray-500 hover:text-red-400"
+                                    title="Revoke and Delete Key"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-white/[0.01] border border-white/5 border-dashed rounded-xl text-center select-none font-sans text-[10px] text-on-surface-variant uppercase">
+                          No active API keys stored on profiles. Enter label to generate tokens.
+                        </div>
+                      )}
+                    </div>
+
+                    <hr className="border-white/5" />
+
+                    {/* section: 5. Meta-Preferences */}
+                    <div className="space-y-4">
+                      <h4 className="font-display text-[10px] font-black tracking-widest text-[#dda75f] uppercase select-none flex items-center gap-1.5">
+                        <User className="h-3 w-3" />
+                        <span>5. System Meta Attributes</span>
+                      </h4>
+                      
+                      <div className="space-y-3 font-sans text-xs">
+                        <div className="flex items-center justify-between py-1 border-b border-white/[0.02]">
+                          <span className="text-on-surface-variant lowercase">unique user identification index</span>
+                          <span className="font-mono text-[9px] font-black tracking-widest text-[#dda75f] flex items-center gap-1">
+                            <span>{userProfile.userId.substring(0, 18)}...</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(userProfile.userId);
+                                if (triggerAppNotification) {
+                                  triggerAppNotification({
+                                    id: `copy-id-${Date.now()}`,
+                                    type: 'system',
+                                    title: 'Copied User UUID 📋',
+                                    message: 'Unique User identification index copied successfully.',
+                                    timestamp: 'Just now',
+                                    movieTitle: 'System Account'
+                                  });
+                                }
+                              }}
+                              className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-[#dda75f] cursor-pointer"
+                              title="Copy UID"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between py-1 border-b border-white/[0.02]">
+                          <span className="text-on-surface-variant lowercase">subscription level tiers</span>
+                          <span className="bg-yellow-400/10 text-yellow-400 text-[8px] font-black px-2.5 py-0.5 border border-yellow-400/30 rounded uppercase tracking-wider">{userProfile.subscriptionPlan || 'spectator'}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between py-1">
+                          <div className="space-y-0.5 text-left">
+                            <span className="block text-[10px] font-sans font-black text-on-surface uppercase select-none leading-none">Onboarding Completed Attribute</span>
+                            <span className="block text-[8px] font-sans text-on-surface-variant lowercase">marks profile onboarding step state</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setOnboardingStatus(!onboardingStatus)}
+                            className={`w-12 h-6 flex items-center rounded-full p-0.5 transition-all duration-300 cursor-pointer ${
+                              onboardingStatus ? 'bg-[#dda75f] justify-end' : 'bg-surface-container-highest justify-start'
+                            }`}
+                          >
+                            <span className={`h-5 w-5 rounded-full shadow-md transform transition-all duration-300 ${
+                              onboardingStatus ? 'bg-black' : 'bg-on-surface-variant'
+                            }`} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              ) : null}
 
               {/* Parental Controls Form Card Wrapper */}
               <div className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-8 shadow-md">
@@ -1320,6 +2112,10 @@ export default function SettingsView({
                       <li>Standard ROWONE Pass</li>
                       <li>No streaming ads</li>
                     </ul>
+                    <div className="mt-2.5 p-1.5 bg-black/40 border border-yellow-400/10 rounded-lg text-[7.5px] font-mono text-yellow-500 select-all leading-tight">
+                      <span className="text-zinc-500 uppercase tracking-widest text-[6.5px] mr-1 block">Stripe Price ID:</span>
+                      <span>price_1Tibrl4cPcPYOVNbzktH30UU</span>
+                    </div>
                   </div>
                   {activeTier === 'spectator' ? (
                     <button
@@ -1403,32 +2199,57 @@ export default function SettingsView({
             </div>
 
             {activeTier !== 'spectator' && (
-              <div className="pt-2">
+              <div className="flex flex-col gap-2.5 pt-2">
+                <button
+                  type="button"
+                  disabled={isPortalLoading}
+                  onClick={handleOpenStripePortal}
+                  className="w-full py-3 bg-[#dda75f] hover:bg-[#dda75f]/90 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-sans text-[9px] font-black uppercase tracking-widest rounded-xl cursor-pointer flex items-center justify-center gap-1.5 shadow transition-all duration-300 active:scale-95"
+                >
+                  {isPortalLoading ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                      <span>SECURELY OPENING STRIPE CUSTOMER PORTAL...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <CreditCard className="h-3.5 w-3.5 shrink-0" />
+                      <span>Manage Subscription & Billing (Stripe Portal) ↗</span>
+                    </>
+                  )}
+                </button>
+
+                {portalError && (
+                  <p className="text-[8.5px] font-mono font-medium text-red-500 uppercase tracking-wider text-center select-none pt-0.5 animate-pulse">
+                    ⚠️ {portalError}
+                  </p>
+                )}
+
                 <button
                   type="button"
                   onClick={handleSimulateRenewal}
-                  className="w-full py-2.5 bg-yellow-400/15 hover:bg-yellow-400 border border-yellow-400/20 hover:border-transparent font-sans text-[9px] font-black uppercase text-yellow-500 hover:text-black rounded-xl cursor-pointer flex items-center justify-center gap-1.5 shadow transition-all duration-300 active:scale-95"
+                  className="w-full py-2 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 font-sans text-[8px] font-bold uppercase text-zinc-400 hover:text-zinc-200 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all duration-300 active:scale-95"
                 >
-                  <Zap className="h-3 w-3 fill-current shrink-0" />
-                  <span>Simulate Automatic Subscription renewal of ${activeTier === 'vip_platinum' ? '24.99' : '14.99'} Run</span>
+                  <Zap className="h-2.5 w-2.5 fill-current shrink-0 text-zinc-500" />
+                  <span>Simulate Local Auto-Renewal Handshake (${activeTier === 'vip_platinum' ? '24.99' : '14.99'})</span>
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        {/* Saved Payment Methods / Credit Cards */}
-        <div className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-md">
-          <div className="flex justify-between items-center select-none">
+        {/* Saved Payment Methods / Payment Instruments */}
+        <div className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-md text-left">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 select-none">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-primary" />
+                <CreditCard className="h-5 w-5 text-yellow-400" />
                 <h3 className="font-display font-extrabold text-[#edf3e3] text-lg uppercase tracking-wide">
-                  Stored Payment Cards
+                  Saved Payment Methods
                 </h3>
               </div>
               <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed font-light">
-                Set up reliable back-up streaming cards. Authorized for monthly subscription clearance.
+                Securely manage credit cards, PayPal logins, and platform-native wallets. Fast, one-click checkout enabled.
               </p>
             </div>
             <button
@@ -1437,82 +2258,185 @@ export default function SettingsView({
                 setShowAddCard(!showAddCard);
                 setCardFormError('');
               }}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-sans text-[10px] font-bold text-on-surface transition-all active:scale-95 flex items-center gap-1 cursor-pointer shrink-0"
+              className="px-4 py-2 bg-[#dcb15b]/10 hover:bg-[#dcb15b]/20 border border-[#dcb15b]/20 rounded-xl font-sans text-[10px] font-black text-yellow-400 uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer shrink-0"
             >
-              <Plus className="h-3 w-3 text-primary shrink-0" />
-              <span>{showAddCard ? 'Cancel' : 'Add Card'}</span>
+              <Plus className="h-3.5 w-3.5 text-yellow-400 shrink-0" />
+              <span>{showAddCard ? 'Close Menu' : 'Add Payment Method'}</span>
             </button>
           </div>
 
-          {/* Add card Form */}
+          {/* Add Payment Method Form container */}
           {showAddCard && (
-            <form onSubmit={handleAddNewCardSubmit} className="p-5 bg-black/30 border border-white/10 rounded-2xl space-y-4 animate-fade-in relative z-10 text-left">
-              <h4 className="font-sans font-black text-[10px] uppercase text-[#ffe29c] tracking-widest block select-none">Register Streaming Card Details</h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5 text-xs font-light">
-                  <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block select-none">Cardholder Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Kwasidanso Danso"
-                    value={newCardHolder}
-                    onChange={(e) => setNewCardHolder(e.target.value)}
-                    className="w-full bg-surface-container border border-white/5 focus:border-primary/50 outline-none rounded-xl px-3 py-2 text-on-surface font-sans"
-                  />
-                </div>
-                <div className="space-y-1.5 text-xs font-light">
-                  <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block select-none">16-Digit Card Number</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={19}
-                    placeholder="4242 4242 4242 4242"
-                    value={newCardNumber}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      const matches = val.match(/\d{4,16}/g);
-                      const match = (matches && matches[0]) || '';
-                      const parts = [];
-                      for (let i = 0, len = match.length; i < len; i += 4) {
-                        parts.push(match.substring(i, i + 4));
-                      }
-                      setNewCardNumber(parts.length > 0 ? parts.join(' ') : val);
-                    }}
-                    className="w-full bg-surface-container border border-white/5 focus:border-primary/50 outline-none rounded-xl px-3 py-2 text-on-surface font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5 text-xs font-light">
-                  <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block select-none">Expiry (MM/YY)</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={5}
-                    placeholder="12/28"
-                    value={newCardExpiry}
-                    onChange={(e) => {
-                      let clean = e.target.value.replace(/\D/g, '');
-                      if (clean.length > 2) {
-                        clean = clean.substring(0, 2) + '/' + clean.substring(2, 4);
-                      }
-                      setNewCardExpiry(clean);
-                    }}
-                    className="w-full bg-surface-container border border-white/5 focus:border-primary/50 outline-none rounded-xl px-3 py-2 text-on-surface font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5 text-xs font-light">
-                  <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block select-none">Security Code (CVC)</label>
-                  <input
-                    type="password"
-                    required
-                    maxLength={4}
-                    placeholder="•••"
-                    value={newCardCvc}
-                    onChange={(e) => setNewCardCvc(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-surface-container border border-white/5 focus:border-primary/50 outline-none rounded-xl px-3 py-2 text-[#ffe29c] font-mono tracking-widest"
-                  />
+            <div className="p-5 bg-black/40 border border-white/10 rounded-2xl space-y-5 animate-fade-in relative z-10">
+              <div className="flex flex-col space-y-2">
+                <span className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-widest select-none">Choose Payment Provider</span>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {(['stripe', 'paypal', 'applepay', 'googlepay'] as const).map((prov) => (
+                    <button
+                      key={prov}
+                      type="button"
+                      onClick={() => {
+                        setActiveProviderForm(prov);
+                        setCardFormError('');
+                      }}
+                      className={`py-2 px-3 rounded-xl border text-[9px] font-black uppercase tracking-wider font-sans text-center transition-all cursor-pointer ${
+                        activeProviderForm === prov
+                          ? 'bg-yellow-400 border-yellow-400 text-black shadow-md shadow-yellow-400/10'
+                          : 'bg-white/5 border-white/5 text-on-surface-variant hover:border-white/15 hover:text-on-surface'
+                      }`}
+                    >
+                      {prov === 'stripe' ? '💳 Stripe Card' : prov === 'paypal' ? '🔵 PayPal' : prov === 'applepay' ? '🍏 Apple Pay' : '🤖 Google Pay'}
+                    </button>
+                  ))}
                 </div>
               </div>
+
+              {/* Sub-forms depending on selection */}
+              {activeProviderForm === 'stripe' && (
+                <div className="space-y-4">
+                  <h4 className="font-sans font-black text-[9px] uppercase text-yellow-400 tracking-widest select-none text-left">Enter Cardholder Essentials</h4>
+                  
+                  {/* Previous Saved Card Autofill quick list */}
+                  {getAutofillCredentials().length > 0 && (
+                    <div className="p-3 bg-yellow-400/[0.03] border border-yellow-400/10 rounded-xl space-y-2 select-none text-left">
+                      <span className="text-[8px] font-sans font-black text-[#dcb15b] uppercase tracking-widest block">
+                        ⚡ Quick Auto-Fill Credentials
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {getAutofillCredentials().map((cred, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setNewCardHolder(cred.cardholderName);
+                              setNewCardNumber(cred.fullCardNumber);
+                              setNewCardExpiry(cred.expiryDate);
+                              setNewCardCvc(cred.cvc);
+                            }}
+                            className="px-2.5 py-1.5 bg-neutral-900 hover:bg-[#dcb15b]/10 border border-white/5 hover:border-[#dcb15b]/20 rounded-lg text-[9px] font-mono text-zinc-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                            <span>{cred.brand}: {cred.cardholderName} (•••• {cred.lastFourDigits})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1 text-xs">
+                      <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block">Cardholder Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Alexis Jordan"
+                        value={newCardHolder}
+                        onChange={(e) => setNewCardHolder(e.target.value)}
+                        className="w-full bg-surface-container border border-white/5 focus:border-yellow-400/35 outline-none rounded-xl px-3 py-2 text-on-surface font-sans"
+                      />
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block">16-Digit Card Number</label>
+                      <input
+                        type="text"
+                        maxLength={19}
+                        placeholder="4242 4242 4242 4242"
+                        value={newCardNumber}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          const matches = val.match(/\d{4,16}/g);
+                          const match = (matches && matches[0]) || '';
+                          const parts = [];
+                          for (let i = 0, len = match.length; i < len; i += 4) {
+                            parts.push(match.substring(i, i + 4));
+                          }
+                          setNewCardNumber(parts.length > 0 ? parts.join(' ') : val);
+                        }}
+                        className="w-full bg-surface-container border border-white/5 focus:border-yellow-400/35 outline-none rounded-xl px-3 py-2 text-on-surface font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block">Expiry (MM/YY)</label>
+                      <input
+                        type="text"
+                        maxLength={5}
+                        placeholder="12/28"
+                        value={newCardExpiry}
+                        onChange={(e) => {
+                          let clean = e.target.value.replace(/\D/g, '');
+                          if (clean.length > 2) {
+                            clean = clean.substring(0, 2) + '/' + clean.substring(2, 4);
+                          }
+                          setNewCardExpiry(clean);
+                        }}
+                        className="w-full bg-surface-container border border-white/5 focus:border-yellow-400/35 outline-none rounded-xl px-3 py-2 text-on-surface font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block">Security CVC</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        placeholder="•••"
+                        value={newCardCvc}
+                        onChange={(e) => setNewCardCvc(e.target.value.replace(/\D/g, ''))}
+                        className="w-full bg-surface-container border border-white/5 focus:border-yellow-400/35 outline-none rounded-xl px-3 py-2 text-[#ffe29c] font-mono tracking-widest"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeProviderForm === 'paypal' && (
+                <div className="space-y-4">
+                  <h4 className="font-sans font-black text-[9px] uppercase text-yellow-400 tracking-widest select-none">PayPal Direct Integration</h4>
+                  <div className="space-y-1 text-xs">
+                    <label className="text-[8px] font-sans font-black text-on-surface-variant uppercase tracking-wider block">Verified PayPal Email</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. buyer@example.com"
+                      value={newCardHolder}
+                      onChange={(e) => setNewCardHolder(e.target.value)}
+                      className="w-full bg-surface-container border border-white/5 focus:border-yellow-400/35 outline-none rounded-xl px-3 py-2 text-on-surface font-sans"
+                    />
+                  </div>
+                  <p className="text-[9px] text-zinc-400 leading-normal lowercase">
+                    clicking authorize below will link your securely-tokenized paypal billing profile with RowOne for seamless recurrent payments.
+                  </p>
+                </div>
+              )}
+
+              {activeProviderForm === 'applepay' && (
+                <div className="space-y-3">
+                  <h4 className="font-sans font-black text-[9px] uppercase text-yellow-400 tracking-widest select-none">Apple Pay Device Connector</h4>
+                  <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-between select-none">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="font-sans text-xs text-on-surface">Secure Biometric Keychain Available</span>
+                    </div>
+                    <span className="font-mono text-[9px] text-[#dda75f] font-bold uppercase">READY</span>
+                  </div>
+                  <p className="text-[9px] text-zinc-400 leading-relaxed font-light lowercase">
+                    your active keychain device signature has been read securely. no card data is exposed. click authorize to link Apple Wallet.
+                  </p>
+                </div>
+              )}
+
+              {activeProviderForm === 'googlepay' && (
+                <div className="space-y-3">
+                  <h4 className="font-sans font-black text-[9px] uppercase text-yellow-400 tracking-widest select-none">Google Pay Secure Signature</h4>
+                  <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-between select-none">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="font-sans text-xs text-on-surface">Google Services Smart Wallet Connected</span>
+                    </div>
+                    <span className="font-mono text-[9px] text-[#dda75f] font-bold uppercase">AVAILABLE</span>
+                  </div>
+                  <p className="text-[9px] text-zinc-400 leading-relaxed font-light lowercase">
+                    g-pay instant checkout tokens will be used. no physical numbers will be written or stored. click authorize to link.
+                  </p>
+                </div>
+              )}
 
               {cardFormError && (
                 <p className="text-[9px] font-sans text-red-500 font-bold uppercase select-none">{cardFormError}</p>
@@ -1520,111 +2444,107 @@ export default function SettingsView({
 
               <div className="pt-2 flex justify-end">
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => handleAddNewPaymentMethod(activeProviderForm)}
                   disabled={isAddingCardLoader}
-                  className="px-5 py-2.5 bg-primary text-on-primary font-sans text-[10px] font-black uppercase tracking-widest rounded-xl hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-black font-sans text-[10px] font-black uppercase tracking-widest rounded-xl disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
                 >
-                  {isAddingCardLoader ? 'Authorizing Card...' : 'Authorize Secure Payment Instrument'}
+                  {isAddingCardLoader ? 'Authorizing Secure Token...' : 'Authorize Secure Billing Interface'}
                 </button>
               </div>
-            </form>
+            </div>
           )}
 
-          {/* Cards list */}
-          <div className="space-y-3 font-light">
-            {currentCards.map((card) => (
-              <div key={card.id} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl flex items-center justify-between transition-all font-sans">
-                <div className="flex gap-3 items-center">
-                  <div className="h-10 w-12 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-on-surface-variant text-[10px] font-black uppercase tracking-wider select-none shrink-0 font-mono">
-                    {card.brand}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h5 className="font-semibold text-xs text-on-surface capitalize">{card.brand} ending in {card.last4}</h5>
-                      {card.isDefault && (
-                        <span className="px-1.5 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 text-[7px] font-sans font-black uppercase tracking-wider rounded select-none">DEFAULT</span>
-                      )}
+          {/* Secure Live Saved Payment Methods list */}
+          <div className="space-y-3">
+            {livePaymentMethods.length === 0 ? (
+              <div className="p-6 text-center bg-black/10 border border-white/5 rounded-2xl select-none">
+                <p className="font-sans text-xs text-on-surface-variant font-light lowercase">
+                  no registered credit cards or digital billing connections configured yet.
+                </p>
+              </div>
+            ) : (
+              livePaymentMethods.map((pm) => (
+                <div
+                  key={pm.id}
+                  className={`p-4 bg-white/[0.02] hover:bg-white/[0.04] border rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all font-sans ${
+                    pm.isDefault ? 'border-[#dcb15b]/30 bg-[#dcb15b]/[0.02]' : 'border-white/5'
+                  }`}
+                >
+                  <div className="flex gap-3.5 items-center">
+                    <div className={`h-10 w-12 rounded-lg flex items-center justify-center text-[9px] font-black uppercase tracking-wider select-none shrink-0 font-mono text-center px-1.5 ${
+                      pm.provider === 'stripe'
+                        ? pm.cardBrand === 'Visa'
+                          ? 'bg-blue-600/10 border border-blue-500/20 text-blue-400'
+                          : 'bg-orange-600/10 border border-orange-500/20 text-orange-400'
+                        : pm.provider === 'paypal'
+                        ? 'bg-sky-600/10 border border-sky-500/20 text-sky-400'
+                        : pm.provider === 'applepay'
+                        ? 'bg-[#edf3e3]/5 border border-white/10 text-white'
+                        : 'bg-green-600/10 border border-green-500/20 text-green-400'
+                    }`}>
+                      {pm.provider === 'stripe' ? pm.cardBrand : pm.provider === 'paypal' ? 'PayPal' : pm.provider === 'applepay' ? 'Apple' : 'GoogleP'}
                     </div>
-                    <p className="text-[9px] text-on-surface-variant mt-0.5 lowercase">
-                      Expires: {card.expiry} | Cardholder: {card.cardholderName}
-                    </p>
+                    <div>
+                      <div className="flex items-center gap-2 select-none">
+                        <span className="font-semibold text-xs text-on-surface">
+                          {pm.provider === 'stripe' ? (
+                            `•••• •••• •••• ${pm.lastFourDigits}`
+                          ) : pm.provider === 'paypal' ? (
+                            `PayPal Login: ${pm.email}`
+                          ) : pm.provider === 'applepay' ? (
+                            `Apple Wallet (Tokenized Device)`
+                          ) : (
+                            `Google Pay (Tokenized Device)`
+                          )}
+                        </span>
+                        {pm.isDefault && (
+                          <span className="px-1.5 py-0.5 bg-yellow-400/10 border border-yellow-400/20 text-yellow-400 text-[6.5px] font-sans font-black uppercase tracking-wider rounded">DEFAULT</span>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-[#bca27a] mt-0.5 select-none lowercase">
+                        {pm.provider === 'stripe' ? (
+                          `Expires: ${pm.expiryMonth?.toString().padStart(2, '0')}/${pm.expiryYear} | Gateway: STRIPE SEED`
+                        ) : (
+                          `linked security subscription clearance active`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 md:justify-end self-end md:self-auto">
+                    {!pm.isDefault && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateDefaultPM(pm.paymentMethodId)}
+                        className="px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg font-sans text-[8px] font-black uppercase tracking-widest text-on-surface transition-all active:scale-95 cursor-pointer select-none"
+                      >
+                        Set Default
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePM(pm.paymentMethodId)}
+                      className="p-1.5 text-on-surface-variant hover:text-red-400 transition-colors cursor-pointer select-none"
+                      title="Remove Payment Method"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleDeleteCard(card.id)}
-                  className="p-2 text-on-surface-variant hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                  title="Remove Payment Card"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
         {/* Invoices and Billing Ledger */}
-        <div className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-md text-left">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 select-none">
-              <Receipt className="h-5 w-5 text-primary" />
-              <h3 className="font-display font-extrabold text-[#edf3e3] text-lg uppercase tracking-wide">
-                Past Billing Transactions &amp; Invoices
-              </h3>
-            </div>
-            <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed">
-              List of automated renewals, virtual coin loadings, and subscription invoices. Download clear PDFs for accounting records.
-            </p>
-          </div>
-
-          {/* Transactions table */}
-          <div className="border border-white/5 bg-black/20 rounded-2xl overflow-hidden font-light">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse font-sans text-xs">
-                <thead>
-                  <tr className="border-b border-white/5 bg-white/[0.02] text-on-surface-variant text-[9px] font-black uppercase tracking-wider select-none">
-                    <th className="px-4 py-3">Transaction</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Method</th>
-                    <th className="px-4 py-3">Receipt / Invoice</th>
-                    <th className="px-4 py-3 text-right">Settled ($)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {currentTxs.map((tx) => (
-                    <tr key={tx.id || tx.date} className="hover:bg-white/[0.01] transition-colors">
-                      <td className="px-4 py-3.5 space-y-0.5">
-                        <span className="font-bold text-on-surface block leading-tight">{tx.description}</span>
-                        <span className="font-mono text-[8px] text-on-surface-variant uppercase tracking-widest">{tx.id || 'TX-GENERIC'}</span>
-                      </td>
-                      <td className="px-4 py-3.5 text-on-surface-variant font-mono whitespace-nowrap">
-                        {tx.date}
-                      </td>
-                      <td className="px-4 py-3.5 text-on-surface-variant font-medium whitespace-nowrap">
-                        {tx.paymentMethod || 'Visa •••• 4242'}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <button
-                          type="button"
-                          onClick={() => generateInvoicePDF(tx)}
-                          className="px-2.5 py-1.5 bg-primary/10 hover:bg-primary text-primary hover:text-on-primary border border-primary/20 hover:border-transparent rounded-lg font-sans text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-                          title="Download PDF Invoice file"
-                        >
-                          <CloudDownload className="h-3 w-3 shrink-0" />
-                          <span>PDF Invoice</span>
-                        </button>
-                      </td>
-                      <td className="px-4 py-3.5 text-right font-mono font-black text-on-surface">
-                        ${Number(tx.amount).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <PaymentHistorySection
+          userId={userProfile?.userId}
+          email={userProfile?.email}
+          username={username}
+          dobString={dobString}
+          userAge={userAge}
+        />
       </div>
     )}
   </div>

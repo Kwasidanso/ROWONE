@@ -28,10 +28,11 @@ export default function Footer({ currentTab, setCurrentTab, onTriggerSupport, on
       {/* Desktop Footer */}
       <footer className="w-full mt-24 py-8 px-6 md:px-8 border-t border-outline-variant/30 flex flex-col md:flex-row justify-between items-center gap-6 bg-surface-container-lowest z-10 relative">
         <div className="flex flex-col items-center md:items-start gap-2.5 text-center md:text-left">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 group cursor-pointer">
             <RowOneLogo size={24} />
-            <span className="font-display text-[#ebd6aa] font-black text-lg italic tracking-tighter uppercase">
-              ROWONE
+            <span className="font-display font-black text-lg italic tracking-tighter select-none transition-all duration-300">
+              <span className="text-[#dda75f] group-hover:text-[#fde2af] transition-all duration-300 group-hover:[text-shadow:0_0_12px_rgba(253,226,175,0.7)]">Row</span>
+              <span className="text-white group-hover:text-white/95 transition-all duration-300 group-hover:[text-shadow:0_0_10px_rgba(255,255,255,0.5)]">One</span>
             </span>
           </div>
           <p className="font-sans text-xs text-on-surface-variant opacity-70 mt-1">

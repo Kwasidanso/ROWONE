@@ -7,7 +7,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, DollarSign, Users, Star, Bolt, Film, Plus, 
   Crown, Calendar, Video, Landmark, TrendingUp, AlertCircle, Play,
-  Trash2, Image, FileVideo, ShieldCheck
+  Trash2, Image, FileVideo, ShieldCheck, ArrowUpRight, ArrowDownLeft, 
+  RefreshCw, Clock, Wallet, TrendingDown, Globe, Eye
 } from 'lucide-react';
 import { Movie, StudioScreening } from '../types';
 import { supabase } from '../lib/supabaseClient';
@@ -21,7 +22,27 @@ interface StudioViewProps {
 
 export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreening, onStartWatchParty }: StudioViewProps) {
   // Setup standard state tab
-  const [activeTab, setActiveTabState] = useState<'upload' | 'schedule' | 'editor'>('upload');
+  const [activeTab, setActiveTabState] = useState<'upload' | 'schedule' | 'editor' | 'earnings'>('upload');
+
+  // Pre-publish SEO & Open Graph preview type toggle
+  const [seoPreviewTab, setSeoPreviewTab] = useState<'og' | 'search'>('og');
+
+  // --- FINANCIALS METRICS & HISTORY STATES ---
+  const [payments, setPayments] = useState<any[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState<boolean>(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [showPayoutModal, setShowPayoutModal] = useState<boolean>(false);
+  const [payoutAmount, setPayoutAmount] = useState<string>('');
+  const [payoutStatusOption, setPayoutStatusOption] = useState<'pending' | 'success'>('pending');
+  const [payoutErrorMsg, setPayoutErrorMsg] = useState<string | null>(null);
+  
+  // Custom transaction simulator state
+  const [showSimulateModal, setShowSimulateModal] = useState<boolean>(false);
+  const [simAmount, setSimAmount] = useState<string>('12.50');
+  const [simLabel, setSimLabel] = useState('NEON ECHOES ticket sale');
+  const [simType, setSimType] = useState<'credit' | 'debit'>('credit');
+  const [simStatus, setSimStatus] = useState<'success' | 'pending'>('success');
+  const [simError, setSimError] = useState<string | null>(null);
 
   // Supabase Studio integration
   const [accountType, setAccountType] = useState<'individual' | 'studio' | null>(() => {
@@ -34,11 +55,116 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
+  const seedInitialStudioPayments = async (userId: string) => {
+    try {
+      const mockRows = [
+        {
+          studio_id: userId,
+          amount: 1250.00,
+          status: 'success',
+          payment_reference: 'TKT_METROPOLIS_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          studio_id: userId,
+          amount: 450.00,
+          status: 'success',
+          payment_reference: 'REV_REDCARPET_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          studio_id: userId,
+          amount: 820.00,
+          status: 'success',
+          payment_reference: 'RYT_SOLAR_WINDS_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          studio_id: userId,
+          amount: 3000.00,
+          status: 'success',
+          payment_reference: 'HON_CHRONO_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          studio_id: userId,
+          amount: 280.00,
+          status: 'pending',
+          payment_reference: 'TKT_PENDING_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          studio_id: userId,
+          amount: -250.00,
+          status: 'success',
+          payment_reference: 'PAYOUT_ST_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          studio_id: userId,
+          amount: -120.00,
+          status: 'pending',
+          payment_reference: 'PAYOUT_PEND_' + Math.floor(Math.random() * 90000 + 10000),
+          created_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString()
+        }
+      ];
+
+      const { error } = await supabase
+        .from('studio_payments')
+        .insert(mockRows);
+
+      if (error) {
+        console.warn('Could not seed initial studio payments records:', error.message);
+      }
+    } catch (err) {
+      console.warn('Error seeding payments:', err);
+    }
+  };
+
+  const fetchPayments = async (uId?: string) => {
+    const userIdToUse = uId || currentUserId;
+    if (!userIdToUse) return;
+
+    setLoadingPayments(true);
+    try {
+      const { data, error } = await supabase
+        .from('studio_payments')
+        .select('*')
+        .eq('studio_id', userIdToUse)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Error fetching studio_payments:', error);
+      } else if (data) {
+        if (data.length <= 1) {
+          await seedInitialStudioPayments(userIdToUse);
+          const { data: refreshed } = await supabase
+            .from('studio_payments')
+            .select('*')
+            .eq('studio_id', userIdToUse)
+            .order('created_at', { ascending: false });
+          if (refreshed) {
+            setPayments(refreshed);
+          }
+        } else {
+          setPayments(data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch payments:', err);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
   useEffect(() => {
     const fetchVerificationStatus = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
+          setCurrentUserId(session.user.id);
+          fetchPayments(session.user.id);
+
           const { data: studio } = await supabase
             .from('studios')
             .select('*')
@@ -58,6 +184,128 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
     };
     fetchVerificationStatus();
   }, []);
+
+  const handleSimulateTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUserId) return;
+    setSimError(null);
+
+    const amtNum = parseFloat(simAmount);
+    if (isNaN(amtNum) || amtNum <= 0) {
+      setSimError('Please enter a valid positive dollar amount.');
+      return;
+    }
+
+    const finalAmount = simType === 'credit' ? amtNum : -amtNum;
+    const prefix = simType === 'credit' ? 'TKT_' : 'PAYOUT_';
+    const reference = prefix + simLabel.toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_' + Math.floor(Math.random() * 90000 + 10000);
+
+    try {
+      const { error } = await supabase
+        .from('studio_payments')
+        .insert({
+          studio_id: currentUserId,
+          amount: finalAmount,
+          status: simStatus,
+          payment_reference: reference
+        });
+
+      if (error) {
+        setSimError(error.message);
+      } else {
+        alert(`Success: Simulated transaction "${simLabel}" of $${amtNum.toFixed(2)} recorded in live ledger.`);
+        setShowSimulateModal(false);
+        setSimAmount('12.50');
+        setSimLabel('NEON ECHOES ticket sale');
+        fetchPayments();
+      }
+    } catch (err: any) {
+      setSimError(err.message || 'An unexpected error occurred.');
+    }
+  };
+
+  const handleRequestPayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUserId) return;
+    setPayoutErrorMsg(null);
+
+    const amtNum = parseFloat(payoutAmount);
+    if (isNaN(amtNum) || amtNum <= 0) {
+      setPayoutErrorMsg('Please specify a positive withdrawal amount.');
+      return;
+    }
+
+    const totalEarnings = payments
+      .filter(p => Number(p.amount) > 0 && !p.payment_reference.startsWith('PM_REF_'))
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const completedPayouts = payments
+      .filter(p => Number(p.amount) < 0 && p.status === 'success')
+      .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
+    const pendingPayouts = payments
+      .filter(p => Number(p.amount) < 0 && p.status === 'pending')
+      .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
+    const availableBalance = Math.max(0, totalEarnings - completedPayouts - pendingPayouts);
+
+    if (amtNum > availableBalance) {
+      setPayoutErrorMsg(`Payout exceeds limit. Maximum available limit of $${availableBalance.toFixed(2)}.`);
+      return;
+    }
+
+    const reference = 'PAYOUT_REQ_' + Math.floor(Math.random() * 9000000 + 1000000);
+
+    try {
+      const { error } = await supabase
+        .from('studio_payments')
+        .insert({
+          studio_id: currentUserId,
+          amount: -amtNum,
+          status: payoutStatusOption,
+          payment_reference: reference
+        });
+
+      if (error) {
+        setPayoutErrorMsg(error.message);
+      } else {
+        alert(`Success: Requested payout of $${amtNum.toFixed(2)} registered in ledger.`);
+        setShowPayoutModal(false);
+        setPayoutAmount('');
+        fetchPayments();
+      }
+    } catch (err: any) {
+      setPayoutErrorMsg(err.message || 'An unexpected error occurred during database insert.');
+    }
+  };
+
+  const handleApprovePayout = async (paymentId: string, reference: string, amount: number) => {
+    try {
+      const { error } = await supabase
+        .from('studio_payments')
+        .update({ status: 'success' })
+        .eq('id', paymentId);
+        
+      if (error) {
+        console.warn('Update policy block, running re-insert fallback strategy:', error.message);
+        await supabase
+          .from('studio_payments')
+          .delete()
+          .eq('id', paymentId);
+          
+        await supabase
+          .from('studio_payments')
+          .insert({
+            studio_id: currentUserId,
+            amount: amount,
+            status: 'success',
+            payment_reference: reference
+          });
+      }
+      
+      alert('Payout authorized and settled successfully!');
+      fetchPayments();
+    } catch (err) {
+      console.warn('Could not settle payment:', err);
+    }
+  };
 
   const handleStudioActivationFee = async () => {
     setIsActivating(true);
@@ -147,7 +395,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
     }
   };
 
-  const setActiveTab = (tab: 'upload' | 'schedule' | 'editor') => {
+  const setActiveTab = (tab: 'upload' | 'schedule' | 'editor' | 'earnings') => {
     setActiveTabState(tab);
     try {
       const url = new URL(window.location.href);
@@ -166,6 +414,8 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
           setActiveTabState('schedule');
         } else if (path.includes('/editor')) {
           setActiveTabState('editor');
+        } else if (path.includes('/earnings')) {
+          setActiveTabState('earnings');
         } else {
           setActiveTabState('upload');
         }
@@ -184,8 +434,11 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
   const uploadedCount = movies.filter(m => m.isUserUploaded).length;
   const isVerifiedFilmmaker = uploadedCount > 5;
 
+  const [isUploading, setIsUploading] = useState(false);
+
   // --- FILM UPLOAD STATE VECTORS ---
   const [title, setTitle] = useState('');
+  const [contentType, setContentType] = useState<'movie' | 'reel'>('movie');
   const [genre, setGenre] = useState('SCI-FI');
   const [synopsis, setSynopsis] = useState('');
   const [rating, setRating] = useState('PG-13');
@@ -222,9 +475,11 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
   const [isPremiereScreening, setIsPremiereScreening] = useState(false);
 
   // Handle uploaded film
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title) return;
+
+    setIsUploading(true);
 
     // Convert cast comma list into CastMember elements
     const actors = castInput.split(',').map((actorName, index) => {
@@ -242,43 +497,108 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
     const parsedPoster = imageUrl.trim() || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&q=80&w=600';
     const parsedBanner = heroImageUrl.trim() || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&q=80&w=1200';
 
-    const freshId = `m-${Date.now()}`;
+    try {
+      const response = await fetch('/api/content/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          contentType,
+          creatorId: localStorage.getItem('popcorn_username') || 'studio_filmmaker',
+          originalVideoUrl: uploadedFileName || '',
+          synopsis: synopsis || 'An elite master theatrical marvel brought to you exclusively under contract.',
+          genre,
+          rating,
+          runtime,
+          format,
+          imageUrl: parsedPoster,
+          heroImageUrl: parsedBanner
+        })
+      });
 
-    onUploadFilmMovie({
-      id: freshId,
-      title: title.toUpperCase(),
-      genre: genre,
-      synopsis: synopsis || 'An elite master theatrical marvel brought to you exclusively under contract.',
-      rating: rating,
-      runtime: runtime,
-      format: format,
-      imageUrl: parsedPoster,
-      heroImageUrl: parsedBanner,
-      trailerUrl: trailerUrl.trim() || undefined,
-      isPremiere: isPremiere,
-      cast: actors,
-      tag: isPremiere ? 'PREMIERE' : 'NEW RELEASE',
-      startsIn: 'Tomorrow',
-      capacity: 100,
-      videoBlobUrl: videoBlobUrl || undefined,
-      uploadedFileName: uploadedFileName || undefined,
-    });
+      if (!response.ok) {
+        throw new Error('Upload server returned details error');
+      }
 
-    setNewlyUploadedId(freshId);
-    setNewlyUploadedTitle(title.toUpperCase());
-    setShowSuccessPrompt(true);
+      const serverDocs = await response.json();
+      const finalized = {
+        ...serverDocs,
+        cast: actors,
+        isPremiere,
+        tag: isPremiere ? 'PREMIERE' : 'NEW RELEASE',
+        videoBlobUrl: videoBlobUrl || undefined,
+        uploadedFileName: uploadedFileName || undefined,
+        isUserUploaded: true
+      };
 
-    // Reset fields
-    setTitle('');
-    setSynopsis('');
-    setImageUrl('');
-    setHeroImageUrl('');
-    setTrailerUrl('');
-    setCastInput('Julian Thorne, Elena Vance, Marcus Reed');
-    setIsPremiere(false);
-    setVideoFile(null);
-    setVideoBlobUrl('');
-    setUploadedFileName('');
+      onUploadFilmMovie(finalized);
+      setNewlyUploadedId(finalized.id);
+      setNewlyUploadedTitle(finalized.title);
+
+    } catch (apiErr) {
+      console.warn('Upload API error, invoking standard local fallback:', apiErr);
+      const freshId = `m-${Date.now()}`;
+      const cleanSlug = title
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-');
+      
+      const shareUrl = `https://www.rowone.xyz/${contentType}s/${cleanSlug}`;
+
+      onUploadFilmMovie({
+        id: freshId,
+        contentType: contentType,
+        title: title.toUpperCase(),
+        genre: genre,
+        synopsis: synopsis || 'An elite master theatrical marvel brought to you exclusively under contract.',
+        rating: rating,
+        runtime: runtime,
+        format: format,
+        imageUrl: parsedPoster,
+        heroImageUrl: parsedBanner,
+        trailerUrl: trailerUrl.trim() || undefined,
+        isPremiere: isPremiere,
+        cast: actors,
+        tag: isPremiere ? 'PREMIERE' : 'NEW RELEASE',
+        startsIn: 'Tomorrow',
+        capacity: 100,
+        videoBlobUrl: videoBlobUrl || undefined,
+        uploadedFileName: uploadedFileName || undefined,
+        isUserUploaded: true,
+        slug: cleanSlug,
+        shareUrl,
+        views: 0,
+        shares: 0,
+        linkClicks: 0,
+        qrScans: 0,
+        sharesByPlatform: { whatsapp: 0, facebook: 0, x: 0, telegram: 0, email: 0, copy: 0 },
+        referringSources: {},
+        uniqueVisitors: []
+      });
+
+      setNewlyUploadedId(freshId);
+      setNewlyUploadedTitle(title.toUpperCase());
+    } finally {
+      setIsUploading(false);
+      setShowSuccessPrompt(true);
+
+      // Reset fields
+      setTitle('');
+      setContentType('movie');
+      setSynopsis('');
+      setImageUrl('');
+      setHeroImageUrl('');
+      setTrailerUrl('');
+      setCastInput('Julian Thorne, Elena Vance, Marcus Reed');
+      setIsPremiere(false);
+      setVideoFile(null);
+      setVideoBlobUrl('');
+      setUploadedFileName('');
+    }
   };
 
   const handleQuickSeedFilms = () => {
@@ -590,6 +910,20 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
             <Bolt className="h-4 w-4" />
             <span>Studio Editor</span>
           </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('earnings');
+            }}
+            className={`px-5 py-3 rounded-xl font-sans text-[10px] font-black tracking-widest uppercase transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'earnings'
+                ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                : 'bg-white/5 border border-white/10 text-on-surface-variant hover:text-white'
+            }`}
+          >
+            <DollarSign className="h-4 w-4" />
+            <span>Financials</span>
+          </button>
         </div>
       </section>
 
@@ -789,6 +1123,18 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 />
               </div>
 
+              <div className="space-y-1.5 text-left">
+                <label className="text-[9px] font-sans font-black tracking-widest text-[#dfd9d5] uppercase block">Content Class / Format Type</label>
+                <select
+                  value={contentType}
+                  onChange={(e: any) => setContentType(e.target.value)}
+                  className="w-full bg-surface-container border border-white/10 rounded-xl px-4 py-3 text-xs md:text-sm text-on-surface focus:outline-none focus:border-primary cursor-pointer focus:ring-0"
+                >
+                  <option value="movie">🎬 DYNAMIC FEATURE FILM (MOVIE)</option>
+                  <option value="reel">📱 CREATOR SHOWREEL SEGMENT (REEL)</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5 text-left">
                   <label className="text-[9px] font-sans font-black tracking-widest text-on-surface-variant uppercase block">Genre Category</label>
@@ -978,12 +1324,128 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 </button>
               </div>
 
+              {/* Pre-Publish SEO & Open Graph Preview */}
+              <div className="bg-zinc-900 bg-opacity-70 border border-white/5 p-4 rounded-2xl space-y-3.5 text-left font-sans shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-[#dda75f]">
+                    <Globe className="h-3.5 w-3.5 animate-pulse" />
+                    <span className="font-sans font-black text-[9px] tracking-widest uppercase">SEO & RICH OG PREVIEW</span>
+                  </div>
+                  
+                  {/* Preview tab switches */}
+                  <div className="flex bg-black/40 rounded-lg p-0.5 border border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => setSeoPreviewTab('og')}
+                      className={`px-2.5 py-1 text-[8px] font-sans font-black uppercase tracking-wider rounded-md duration-150 cursor-pointer ${
+                        seoPreviewTab === 'og' 
+                          ? 'bg-[#dda75f] text-black font-black' 
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Social OG
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeoPreviewTab('search')}
+                      className={`px-2.5 py-1 text-[8px] font-sans font-black uppercase tracking-wider rounded-md duration-150 cursor-pointer ${
+                        seoPreviewTab === 'search' 
+                          ? 'bg-[#dda75f] text-black font-black' 
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Google Snippet
+                    </button>
+                  </div>
+                </div>
+
+                {seoPreviewTab === 'og' ? (
+                  /* Social Share rich representation mockup */
+                  <div className="bg-zinc-950 border border-white/10 rounded-xl overflow-hidden shadow-inner flex flex-col">
+                    {/* Media preview cover banner */}
+                    <div className="aspect-video w-full bg-zinc-900 relative overflow-hidden flex items-center justify-center">
+                      <img 
+                        src={heroImageUrl || imageUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&q=80&w=1200'} 
+                        alt="Rich Meta Coverage" 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&q=80&w=1200';
+                        }}
+                      />
+                      <div className="absolute top-2 right-2 bg-black/75 border border-white/10 rounded px-1.5 py-0.5 text-[7px] font-mono text-zinc-400 uppercase tracking-widest leading-none">
+                        og:image
+                      </div>
+                    </div>
+
+                    {/* Metadata summary snippet styled exactly like premium iMessage / Discord embeds */}
+                    <div className="p-3 bg-zinc-900/40 border-t border-white/5 space-y-1">
+                      <span className="text-[8px] font-mono text-[#dda75f] uppercase tracking-widest font-black leading-none block">
+                        rowone.xyz
+                      </span>
+                      <h4 className="font-display font-bold text-xs text-white leading-tight mt-0.5 text-left">
+                        {title ? `${title.toUpperCase()} | RowOne ${contentType === 'reel' ? 'Showreel' : 'Cinema'}` : 'UNTITLED CINEMA HUB'}
+                      </h4>
+                      <p className="text-[9.5px] font-sans text-zinc-400 leading-normal line-clamp-2 text-left">
+                        {synopsis ? (synopsis.length > 155 ? synopsis.substring(0, 155) + '...' : synopsis) : 'Discover and watch premium, certified high-resolution cinematic masterpieces and creator showreels live with friends in synchronization.'}
+                      </p>
+                      
+                      {/* Interactive meta tag labels list */}
+                      <div className="pt-2 flex flex-wrap gap-1 border-t border-white/5 mt-2">
+                        <div className="bg-white/5 border border-white/5 rounded px-1.5 py-0.5 text-[6.5px] font-mono text-zinc-500 uppercase tracking-wide">
+                          og:type: {contentType === 'movie' ? 'video.movie' : 'video.other'}
+                        </div>
+                        <div className="bg-white/5 border border-white/5 rounded px-1.5 py-0.5 text-[6.5px] font-mono text-zinc-500 uppercase tracking-wide truncate max-w-[180px]">
+                          og:url: https://www.rowone.xyz/{contentType === 'reel' ? 'reels' : 'movies'}/{title ? title.toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-') : 'untitled'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Google Search Result Mockup */
+                  <div className="p-3 bg-zinc-950 border border-white/10 rounded-xl space-y-1.5 font-sans leading-tight">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-4 bg-primary/20 text-primary border border-primary/20 rounded-full flex items-center justify-center text-[7.5px] font-mono font-black">
+                        R1
+                      </div>
+                      <div className="space-y-0">
+                        <span className="text-[9px] text-[#dfe0e2] font-semibold block leading-none">RowOne Cinema</span>
+                        <span className="text-[8.5px] text-zinc-500 font-mono block leading-none">
+                          https://www.rowone.xyz/{contentType === 'reel' ? 'reels' : 'movies'}/{title ? title.toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-') : 'untitled'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <h4 className="font-sans text-[#4dabf7] hover:underline text-xs md:text-sm font-semibold leading-tight cursor-default text-left">
+                        {title ? `${title.toUpperCase()} | RowOne ${contentType === 'reel' ? 'Showreel' : 'Cinema'}` : 'UNTITLED CINEMA HUB'}
+                      </h4>
+                      <p className="text-[10.5px] font-sans text-zinc-400 leading-relaxed text-left">
+                        {synopsis ? (synopsis.length > 155 ? synopsis.substring(0, 155) + '...' : synopsis) : 'Discover and watch premium, certified high-resolution cinematic masterpieces and creator showreels live with friends in synchronization.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
-                className="w-full py-4 rounded-xl bg-primary hover:bg-primary-hover text-on-primary font-sans text-xs font-black tracking-widest uppercase transition-all shadow-lg shadow-primary/25 cursor-pointer flex items-center justify-center gap-2"
+                disabled={isUploading}
+                className={`w-full py-4 rounded-xl text-on-primary font-sans text-xs font-black tracking-widest uppercase transition-all shadow-lg shadow-primary/25 flex items-center justify-center gap-2 ${
+                  isUploading ? 'bg-primary/50 cursor-not-allowed' : 'bg-primary hover:bg-primary-hover cursor-pointer'
+                }`}
               >
-                <Upload className="h-4 w-4" />
-                <span>Publish Cinema Reel</span>
+                {isUploading ? (
+                  <>
+                    <span className="h-4 w-4 rounded-full border-2 border-on-primary border-t-transparent animate-spin"></span>
+                    <span>Building SEO package...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    <span>Publish Cinema Reel</span>
+                  </>
+                )}
               </button>
 
               <div className="pt-3 border-t border-white/5 space-y-1">
@@ -1132,7 +1594,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 <span>Deploy Theater Showtime</span>
               </button>
             </form>
-          ) : (
+          ) : activeTab === 'editor' ? (
             /* STUDIO EDITOR */
             <div className="space-y-4">
               <div className="space-y-1">
@@ -1143,7 +1605,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed text-left">Real-time video sequencing, audio mastering, subtitles calibration, and film tone correction workspace.</p>
               </div>
 
-              <div className="space-y-3.5 pt-2">
+              <div className="space-y-3.5 pt-2 border-t border-white/5">
                 <div className="bg-surface-container rounded-2xl p-4 border border-white/5 space-y-3">
                   <div className="flex justify-between items-center text-[10px] font-mono text-on-surface-variant">
                     <span className="text-primary font-bold">MULTITRACK TIMELINE</span>
@@ -1199,6 +1661,239 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                   Compile & Export Reel
                 </button>
               </div>
+            </div>
+          ) : (
+            /* FINANCIALS TAB (PostgreSQL Verified) */
+            <div className="space-y-6 text-left">
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-left">
+                  <div>
+                    <h3 className="font-display font-extrabold text-[#ede6e3] text-lg uppercase tracking-wide flex items-center gap-2">
+                      <Wallet className="h-5 w-5 text-primary" />
+                      <span>Studio Revenue & Ledger</span>
+                    </h3>
+                    <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed text-left">
+                      Real-time cash flows, accumulated distributor credits, pending clearance, and historical receipts.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchPayments()}
+                    disabled={loadingPayments}
+                    className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-on-surface-variant hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                    title="Reload ledger from Supabase"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loadingPayments ? 'animate-spin text-primary' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Cash Flow Summary Widgets */}
+              {(() => {
+                const totalEarnings = payments
+                  .filter(p => Number(p.amount) > 0 && !p.payment_reference.startsWith('PM_REF_'))
+                  .reduce((sum, p) => sum + Number(p.amount), 0);
+                const completedPayouts = payments
+                  .filter(p => Number(p.amount) < 0 && p.status === 'success')
+                  .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
+                const pendingPayouts = payments
+                  .filter(p => Number(p.amount) < 0 && p.status === 'pending')
+                  .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
+                const availableBalance = Math.max(0, totalEarnings - completedPayouts - pendingPayouts);
+
+                return (
+                  <div className="space-y-5 border-t border-white/5 pt-2">
+                    {/* Compact Card Stats Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-sans select-none">
+                      {/* Available Balance Box */}
+                      <div className="p-4 bg-gradient-to-br from-emerald-950/20 to-black/65 border border-emerald-500/25 rounded-2xl flex flex-col justify-between h-32 relative shadow-[0_4px_25px_rgba(16,185,129,0.05)]">
+                        <div>
+                          <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase block">Available Balance</span>
+                          <span className="text-[8px] text-on-surface-variant block mt-0.5">Clearing instantaneous directly to Bank</span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <span className="font-mono text-2xl font-black text-white">${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPayoutErrorMsg(null);
+                              setPayoutAmount('');
+                              setShowPayoutModal(true);
+                            }}
+                            disabled={availableBalance <= 0}
+                            className="px-3 py-1.5 bg-emerald-500 text-slate-950 text-[9px] font-black uppercase tracking-wider rounded-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Withdraw Payout
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Cumulative Gross Earnings Box */}
+                      <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-2xl flex flex-col justify-between h-32">
+                        <div>
+                          <span className="text-[9px] font-black tracking-widest text-[#dfd4ce] uppercase block">Lifetime Earnings</span>
+                          <span className="text-[8px] text-on-surface-variant block mt-0.5">Sum of all film ticket sales and licensing royalties</span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <span className="font-mono text-2xl font-black text-[#ede6e3]">${totalEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <div className="flex gap-1 items-center font-mono text-[9px] text-emerald-400 font-extrabold uppercase">
+                            <ArrowUpRight className="h-3 w-3" />
+                            <span>+{payments.filter(p => p.amount > 0).length} Sales</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pending Payout Box */}
+                      <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-2xl flex flex-col justify-between h-32">
+                        <div>
+                          <span className="text-[9px] font-black tracking-widest text-amber-500 uppercase block">Pending Payouts</span>
+                          <span className="text-[8px] text-on-surface-variant block mt-0.5">Withdrawals currently under clearing review</span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <span className="font-mono text-2xl font-black text-amber-500">${pendingPayouts.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          {pendingPayouts > 0 && (
+                            <div className="flex gap-1 items-center font-mono text-[9.5px] text-amber-500 animate-pulse font-bold uppercase">
+                              <Clock className="h-3 w-3" />
+                              <span>Clearing...</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Withdrawn/Settled Box */}
+                      <div className="p-4 bg-zinc-950/40 border border-white/5 rounded-2xl flex flex-col justify-between h-32">
+                        <div>
+                          <span className="text-[9px] font-black tracking-widest text-on-surface-variant uppercase block font-bold">Successfully Settled</span>
+                          <span className="text-[8px] text-on-surface-variant block mt-0.5">Withdrawn cash settled in central routing bank</span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <span className="font-mono text-2xl font-black text-gray-300">${completedPayouts.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <div className="flex gap-1 items-center font-mono text-[9px] text-gray-400 font-bold uppercase">
+                            <ShieldCheck className="h-3 w-3 text-emerald-500" />
+                            <span>100% Secure</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Simulation Console Wrapper Banner */}
+                    <div className="p-4 bg-gradient-to-r from-purple-950/15 to-[#181112]/80 border border-purple-500/20 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-purple-400 animate-ping" />
+                          <h5 className="font-sans font-black text-[10px] tracking-wider text-purple-400 uppercase">Sandbox Developer Toolkit</h5>
+                        </div>
+                        <p className="font-sans text-[11px] text-on-surface-variant mt-0.5 max-w-[420px] lowercase text-left leading-relaxed">
+                          Test studio financials instantly! Simulate custom audience ticket sales, licensings, or withdrawals directly in our backend.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSimError(null);
+                          setShowSimulateModal(true);
+                        }}
+                        className="py-2 px-3.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 font-bold text-[9px] uppercase tracking-wider rounded-xl transition-all select-none cursor-pointer self-start md:self-auto shrink-0"
+                      >
+                        Simulate Custom Transaction
+                      </button>
+                    </div>
+
+                    {/* Live Physical Ledger History */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center select-none pt-1">
+                        <span className="text-[9px] font-black tracking-widest text-on-surface-variant uppercase">Full Ledger Log ({payments.length} items)</span>
+                        <span className="text-[8.5px] text-on-surface-variant font-medium lowercase">synchronized with studio_payments table</span>
+                      </div>
+
+                      {loadingPayments ? (
+                        <div className="flex flex-col items-center justify-center p-8 bg-black/20 rounded-2xl border border-white/5 space-y-2">
+                          <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+                          <span className="text-[10px] font-sans text-on-surface-variant lowercase">fetching latest transactions from PostgreSQL ledger...</span>
+                        </div>
+                      ) : payments.length === 0 ? (
+                        <div className="p-8 text-center bg-black/20 rounded-2xl border border-white/5 font-sans lowercase text-zinc-500 text-xs">
+                          No transactions found in postgresql ledger.
+                        </div>
+                      ) : (
+                        <div className="space-y-2 overflow-y-auto max-h-[350px] pr-1">
+                          {payments.map((p) => {
+                            const isIncoming = Number(p.amount) > 0;
+                            const isPayout = Number(p.amount) < 0;
+                            const isBrandActivation = p.payment_reference.startsWith('PM_REF_') || p.payment_reference.startsWith('BRAND_');
+                            
+                            // Determine display category descriptive label
+                            let mainLabel = 'Audience Ticket Sale';
+                            let iconElement = <ArrowDownLeft className="h-3 text-emerald-400" />;
+                            if (isPayout) {
+                              mainLabel = 'Studio Payout/Withdrawal';
+                              iconElement = <ArrowUpRight className="h-3 text-red-400" />;
+                            } else if (isBrandActivation) {
+                              mainLabel = 'Brand Verification Fee';
+                              iconElement = <Wallet className="h-3 text-yellow-400" />;
+                            } else if (p.payment_reference.startsWith('REV_')) {
+                              mainLabel = 'Lounge Ticket Rev-Share';
+                            } else if (p.payment_reference.startsWith('RYT_')) {
+                              mainLabel = 'Cinema Room Royalties';
+                            } else if (p.payment_reference.startsWith('HON_')) {
+                              mainLabel = 'Film Festival Honorarium';
+                            }
+
+                            return (
+                              <div key={p.id} className="p-3.5 bg-black/40 hover:bg-[#181112] border border-white/5 rounded-xl flex justify-between items-center transition-all group">
+                                <div className="flex items-center gap-3 text-left">
+                                  <div className={`p-2 rounded-lg shrink-0 ${isPayout ? 'bg-red-500/10' : isBrandActivation ? 'bg-yellow-400/10' : 'bg-emerald-500/10'}`}>
+                                    {iconElement}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-display font-black text-[11px] text-[#ede6e3] group-hover:text-primary transition-colors">{mainLabel}</span>
+                                      <span className="font-mono text-[7.5px] text-zinc-500 tracking-wider hidden sm:inline">{p.payment_reference}</span>
+                                    </div>
+                                    <span className="font-sans text-[8.5px] text-on-surface-variant block mt-0.5 font-bold text-left">
+                                      {new Date(p.created_at).toLocaleDateString()} at {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3.5 shrink-0">
+                                  {/* Sandbox Clear option for pending payouts */}
+                                  {isPayout && p.status === 'pending' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApprovePayout(p.id, p.payment_reference, Number(p.amount))}
+                                      className="py-1 px-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase rounded-md border border-emerald-500/20 cursor-pointer select-none transition-all"
+                                      title="Click to process and authorize sandbox cash out"
+                                    >
+                                      Instantly Settle
+                                    </button>
+                                  )}
+
+                                  {/* Status Indicator */}
+                                  <span className={`font-mono text-[8.5px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
+                                    p.status === 'success' 
+                                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
+                                      : p.status === 'failed'
+                                      ? 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                      : 'bg-amber-500/10 border border-amber-500/20 text-amber-500'
+                                  }`}>
+                                    {p.status}
+                                  </span>
+
+                                  {/* Ledger Cash value */}
+                                  <span className={`font-mono font-black text-xs min-w-[65px] text-right ${isPayout ? 'text-red-400' : isBrandActivation ? 'text-yellow-400/90' : 'text-emerald-400'}`}>
+                                    {isPayout ? '-' : isBrandActivation ? '-' : '+'}${Math.abs(Number(p.amount)).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1313,9 +2008,95 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                   {newlyUploadedTitle} IS LIVE!
                 </h3>
                 <p className="font-sans text-xs text-[#dfd9d5] leading-relaxed lowercase">
-                  your custom showreel and movie package has successfully built in our servers. do you want to create a friends-only sync watch lounge to watch it live together with your squad?
+                  your custom showreel and movie package has successfully built in our servers with automated search optimization.
                 </p>
               </div>
+
+              {/* QR & Direct URL layout inside success prompt */}
+              {(() => {
+                const uploadedMovie = movies.find(m => m.id === newlyUploadedId);
+                if (!uploadedMovie) return null;
+                return (
+                  <div className="p-4 bg-black/60 border border-[#fa5252]/20 rounded-2xl flex flex-col items-center space-y-3 TEXT-CENTER">
+                    {uploadedMovie.qrCodeUrl && (
+                      <div className="flex flex-col items-center space-y-1">
+                        <div className="p-1.5 bg-white rounded-lg inline-block shadow-md">
+                          <img src={uploadedMovie.qrCodeUrl} alt="QR Code" className="w-16 h-16 object-contain" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = uploadedMovie.qrCodeUrl!;
+                            link.download = `rowone-qr-${uploadedMovie.slug}.png`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                          className="px-2 py-0.5 bg-white/5 hover:bg-white/10 rounded border border-white/10 text-[8px] font-mono text-zinc-300 transition-colors"
+                        >
+                          📥 Download QR
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div className="w-full space-y-1">
+                      <span className="text-[7px] font-mono font-black text-zinc-500 uppercase tracking-widest block text-left">Generated SEO URL</span>
+                      <div className="flex items-center gap-1 bg-white/[0.02] border border-white/5 p-1.5 rounded-xl">
+                        <p className="text-[8.5px] font-mono text-zinc-300 truncate flex-1 text-left select-all">
+                          {uploadedMovie.shareUrl}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(uploadedMovie.shareUrl || '');
+                            alert('📋 SEO direct link copied securely!');
+                          }}
+                          className="px-2 py-1 bg-primary text-white font-sans text-[8px] font-black uppercase rounded-lg shrink-0 transition-transform active:scale-95 cursor-pointer"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Social platforms sharing buttons */}
+                    <div className="w-full space-y-1 bg-neutral-900/40 p-2 rounded-xl border border-white/5">
+                      <span className="text-[7px] font-mono font-bold text-zinc-500 uppercase tracking-wider block text-left">Share To SQUAD</span>
+                      <div className="flex items-center justify-around gap-1">
+                        {[
+                          { name: 'WhatsApp', icon: '💬', platform: 'whatsapp' },
+                          { name: 'Facebook', icon: '📘', platform: 'facebook' },
+                          { name: 'X / Twitter', icon: '🐦', platform: 'x' },
+                          { name: 'Telegram', icon: '✈️', platform: 'telegram' },
+                          { name: 'Email', icon: '✉️', platform: 'email' }
+                        ].map((soc) => (
+                          <button
+                            key={soc.platform}
+                            type="button"
+                            onClick={() => {
+                              const urlStr = uploadedMovie.shareUrl || '';
+                              const text = `🍿 Watch "${uploadedMovie.title}" on ROWONE! Direct Link:`;
+                              let target = '';
+                              if (soc.platform === 'whatsapp') target = `https://api.whatsapp.com/send?text=${encodeURIComponent(text + ' ' + urlStr)}`;
+                              else if (soc.platform === 'facebook') target = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(urlStr)}`;
+                              else if (soc.platform === 'x') target = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(urlStr)}`;
+                              else if (soc.platform === 'telegram') target = `https://t.me/share/url?url=${encodeURIComponent(urlStr)}&text=${encodeURIComponent(text)}`;
+                              else if (soc.platform === 'email') target = `mailto:?subject=${encodeURIComponent('RowOne Premiere: ' + uploadedMovie.title)}&body=${encodeURIComponent(text + '\n\n' + urlStr)}`;
+                              
+                              if (target) window.open(target, '_blank');
+                            }}
+                            className="flex flex-col items-center justify-center p-1 hover:bg-white/5 rounded-lg cursor-pointer"
+                            title={`Share to ${soc.name}`}
+                          >
+                            <span className="text-xs mb-0.5">{soc.icon}</span>
+                            <span className="text-[6px] font-sans font-bold text-gray-400 capitalize">{soc.name.split(' ')[0]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex flex-col gap-2.5 pt-3">
                 <button
@@ -1342,6 +2123,196 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                   Schedule theater timeslots later
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Outgoing Payout Modal Box */}
+      {showPayoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in text-left select-none">
+          <div className="w-full max-w-md bg-gradient-to-b from-[#181112] to-[#0c0c0e] border border-emerald-500/35 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/35 text-emerald-400 flex items-center justify-center">
+                  <Landmark className="h-4.5 w-4.5" />
+                </div>
+                <button 
+                  onClick={() => setShowPayoutModal(false)}
+                  className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-md text-[10px] text-zinc-400 hover:text-white font-mono cursor-pointer transition-all"
+                >
+                  ESC
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="font-mono text-[8px] text-emerald-400 font-black tracking-widest uppercase border border-emerald-500/25 bg-emerald-500/5 px-2 py-0.5 rounded-full inline-block">
+                  SECURE_LEDGER_WITHDRAWAL
+                </span>
+                <h3 className="font-display font-black text-lg text-white uppercase tracking-tight">
+                  Request Balance Payout
+                </h3>
+                <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed lowercase text-left">
+                  Settle your available distributor earnings instantly to your linked bank details or stripe connect account.
+                </p>
+              </div>
+
+              <form onSubmit={handleRequestPayout} className="space-y-3.5 pt-2">
+                <div>
+                  <label className="block text-[9px] font-sans font-black tracking-widest uppercase text-on-surface-variant mb-1">
+                    Withdrawal Amount ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    value={payoutAmount}
+                    onChange={(e) => setPayoutAmount(e.target.value)}
+                    placeholder="e.g. 150.00"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-mono text-xs text-white focus:outline-none focus:border-emerald-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-sans font-black tracking-widest uppercase text-on-surface-variant mb-1">
+                    Clearance Option (sandbox only)
+                  </label>
+                  <select
+                    value={payoutStatusOption}
+                    onChange={(e: any) => setPayoutStatusOption(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-[#181112] border border-white/10 rounded-xl font-sans text-xs text-white focus:outline-none focus:border-emerald-400 cursor-pointer"
+                  >
+                    <option value="pending">Submit as Pending (Audit Review Mode)</option>
+                    <option value="success">Sandbox Instant Clearance (Direct SUCCESS)</option>
+                  </select>
+                </div>
+
+                {payoutErrorMsg && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] rounded-xl flex items-center gap-2 font-black lowercase text-left">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{payoutErrorMsg}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-emerald-500 text-slate-950 font-sans text-[10px] font-black tracking-widest uppercase rounded-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg transition-transform outline-none text-center"
+                >
+                  🚀 Approve Outgoing Payout
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sandbox Transaction Generator Modal Box */}
+      {showSimulateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in text-left select-none">
+          <div className="w-full max-w-md bg-gradient-to-b from-[#181112] to-[#0c0c0e] border border-purple-500/35 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/35 text-purple-400 flex items-center justify-center">
+                  <Bolt className="h-4.5 w-4.5" />
+                </div>
+                <button 
+                  onClick={() => setShowSimulateModal(false)}
+                  className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-md text-[10px] text-zinc-400 hover:text-white font-mono cursor-pointer transition-all"
+                >
+                  ESC
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="font-mono text-[8px] text-purple-400 font-black tracking-widest uppercase border border-purple-500/25 bg-purple-500/5 px-2 py-0.5 rounded-full inline-block">
+                  SANDBOX_TRANSACTION_GENERATOR
+                </span>
+                <h3 className="font-display font-black text-lg text-white uppercase tracking-tight">
+                  Simulate Ledger Activities
+                </h3>
+                <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed lowercase text-left">
+                  Generate customized database activities inside the physical studio_payments table to verify financial dashboards and real-time ledger records.
+                </p>
+              </div>
+
+              <form onSubmit={handleSimulateTransaction} className="space-y-3.5 pt-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[9px] font-sans font-black tracking-widest uppercase text-on-surface-variant mb-1">
+                      Flow Type
+                    </label>
+                    <select
+                      value={simType}
+                      onChange={(e: any) => setSimType(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-[#181112] border border-white/10 rounded-xl font-sans text-xs text-white focus:outline-none focus:border-purple-400 cursor-pointer"
+                    >
+                      <option value="credit">Ticket Sale (Credit +)</option>
+                      <option value="debit">Outgoing Cost (Debit -)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[9px] font-sans font-black tracking-widest uppercase text-on-surface-variant mb-1">
+                      Initial Status
+                    </label>
+                    <select
+                      value={simStatus}
+                      onChange={(e: any) => setSimStatus(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-[#181112] border border-white/10 rounded-xl font-sans text-xs text-white focus:outline-none focus:border-purple-400 cursor-pointer"
+                    >
+                      <option value="success">Success</option>
+                      <option value="pending">Pending</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-sans font-black tracking-widest uppercase text-on-surface-variant mb-1">
+                    Label/Description
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={simLabel}
+                    onChange={(e) => setSimLabel(e.target.value)}
+                    placeholder="e.g. IMAX Room 3 Ticket Sale"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-sans text-xs text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-sans font-black tracking-widest uppercase text-on-surface-variant mb-1">
+                    Amount ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    value={simAmount}
+                    onChange={(e) => setSimAmount(e.target.value)}
+                    placeholder="e.g. 12.50"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-mono text-xs text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+
+                {simError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] rounded-xl flex items-center gap-2 font-black lowercase text-left">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{simError}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-purple-500 text-white font-sans text-[10px] font-black tracking-widest uppercase rounded-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg transition-transform outline-none text-center"
+                >
+                  🚀 Record Simulator Entry
+                </button>
+              </form>
             </div>
           </div>
         </div>

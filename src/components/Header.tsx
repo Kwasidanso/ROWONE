@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Film, Search, User, Bell, Users, LogOut, Settings, Edit3 } from 'lucide-react';
+import { Film, Search, User, Bell, Users, LogOut, Settings, Edit3, QrCode } from 'lucide-react';
 import NotificationDropdown, { AppNotification } from './NotificationDropdown';
 import { useLanguage } from '../context/LanguageContext';
 import RowOneLogo from './RowOneLogo';
@@ -15,6 +15,7 @@ interface HeaderProps {
   isLoggedIn: boolean;
   onOpenAuth: () => void;
   onOpenSearch: () => void;
+  onOpenQrScanner?: () => void;
   notifications: AppNotification[];
   onNotificationAction: (notif: AppNotification) => void;
   onClearNotifications: () => void;
@@ -40,6 +41,7 @@ export default function Header({
   isLoggedIn,
   onOpenAuth,
   onOpenSearch,
+  onOpenQrScanner,
   notifications,
   onNotificationAction,
   onClearNotifications,
@@ -75,6 +77,22 @@ export default function Header({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  React.useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showDropdown && !target.closest('.notification-bell-container')) {
+        setShowDropdown(false);
+      }
+      if (showProfileDropdown && !target.closest('.profile-dropdown-container')) {
+        setShowProfileDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [showDropdown, showProfileDropdown]);
+
   return (
     <header 
       onMouseEnter={() => setIsHovered(true)}
@@ -93,8 +111,9 @@ export default function Header({
         }}
       >
         <RowOneLogo size={28} />
-        <span className="font-display text-[#ebd6aa] font-black text-xl md:text-2xl italic tracking-tighter uppercase select-none group-hover:text-primary transition-colors">
-          ROWONE
+        <span className="font-display font-black text-xl md:text-2xl italic tracking-tighter select-none transition-all duration-300">
+          <span className="text-[#dda75f] group-hover:text-[#fde2af] transition-all duration-300 group-hover:[text-shadow:0_0_12px_rgba(253,226,175,0.7)]">Row</span>
+          <span className="text-white group-hover:text-white/95 transition-all duration-300 group-hover:[text-shadow:0_0_10px_rgba(255,255,255,0.5)]">One</span>
         </span>
       </div>
 
@@ -131,6 +150,18 @@ export default function Header({
       </nav>
 
       <div className="flex items-center gap-4">
+        {onOpenQrScanner && (
+          <button 
+            type="button"
+            onClick={onOpenQrScanner}
+            className="p-1.5 text-on-surface-variant hover:text-[#dda75f] active:scale-90 transition-all rounded-full hover:bg-white/5 flex items-center gap-1 group/qr"
+            title="Scan Film QR Code"
+          >
+            <QrCode className="h-4.5 w-4.5 group-hover/qr:scale-110 duration-200" />
+            <span className="hidden lg:inline text-[9px] font-sans font-black tracking-widest uppercase">Scan QR</span>
+          </button>
+        )}
+
         <button 
           onClick={onOpenSearch}
           className="p-1 text-on-surface-variant hover:text-primary active:scale-90 transition-all rounded-full hover:bg-white/5"
@@ -188,7 +219,7 @@ export default function Header({
         </button>
         
         {isLoggedIn && (
-          <div className="relative">
+          <div className="notification-bell-container relative">
             <button 
               onClick={() => setShowDropdown(!showDropdown)}
               className={`relative p-1.5 transition-all rounded-full hover:bg-white/5 duration-200 cursor-pointer ${
@@ -221,7 +252,7 @@ export default function Header({
         )}
 
         {isLoggedIn ? (
-          <div className="relative">
+          <div className="profile-dropdown-container relative">
             <button 
               onClick={() => {
                 setShowProfileDropdown(!showProfileDropdown);

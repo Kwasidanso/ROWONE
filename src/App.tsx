@@ -22,6 +22,7 @@ import SettingsView from './components/SettingsView';
 import UpgradeModal from './components/UpgradeModal';
 import SupportPanel from './components/SupportPanel';
 import PrivacyModal from './components/PrivacyModal';
+import QrScannerModal from './components/QrScannerModal';
 import DiscoverView from './components/DiscoverView';
 import FriendsSidebar from './components/FriendsSidebar';
 import TvModeView from './components/TvModeView';
@@ -31,6 +32,8 @@ import { Movie, BookedTicket, isMovieAllowedForUser } from './types';
 import { Search, X, Film, Star, Clock, Users, Bell, Lock, Unlock, Eye, QrCode, VolumeX, Mic, MicOff } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { supabase } from './lib/supabaseClient';
+import { loadUserProfile, saveUserProfile, UserProfile, createDefaultProfile } from './lib/userProfileService';
+import { sanitizeTitleToSlug, generateUniqueSlug, generateQrCodeUrl, updateSeoTags, resetSeoTags } from './utils/shareUtils';
 
 export default function App() {
   const { t } = useLanguage();
@@ -82,9 +85,154 @@ export default function App() {
     setCurrentTabState(tab);
   };
 
+  const [movies, setMovies] = useState<Movie[]>(() => {
+    try {
+      const saved = localStorage.getItem('rowone_movies');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load local storage movies:', e);
+    }
+
+    // Default: seed with Initial Movies and generate titles slug / direct links
+    const items = [...INITIAL_MOVIES];
+    const seen: string[] = [];
+    for (const item of items) {
+      if (!item.contentType) {
+        // Map some items to 'reel' and others to 'reel'/'movie' for aesthetic balance
+        item.contentType = item.id === 'm2' || item.id === 'm4' ? 'reel' : 'movie';
+      }
+      if (!item.slug) {
+        let base = item.title
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-');
+        if (seen.includes(base)) {
+          base = `${base}-${Math.random().toString(16).substring(2, 7)}`;
+        }
+        item.slug = base;
+      }
+      seen.push(item.slug);
+      if (!item.shareUrl) {
+        item.shareUrl = `https://www.rowone.xyz/${item.contentType}s/${item.slug}`;
+      }
+      if (!item.views) {
+        item.views = item.id === 'm1' ? 452 : (item.id === 'm2' ? 240 : (item.id === 'm3' ? 180 : 135));
+      }
+      if (!item.shares) {
+        item.shares = item.id === 'm1' ? 38 : (item.id === 'm2' ? 19 : 8);
+      }
+      if (!item.sharesByPlatform) {
+        item.sharesByPlatform = {
+          whatsapp: Math.floor(item.shares * 0.4),
+          facebook: Math.floor(item.shares * 0.2),
+          x: Math.floor(item.shares * 0.2),
+          telegram: Math.floor(item.shares * 0.1),
+          email: Math.floor(item.shares * 0.1),
+          copy: 0
+        };
+      }
+    }
+    return items;
+  });
+
+  // Background check for missing QR codes in the movie list
   useEffect(() => {
-    const handlePopStateSync = () => {
+    const generateQrs = async () => {
       try {
+        let modified = false;
+        const updated = await Promise.all(movies.map(async (m) => {
+          if (!m.qrCodeUrl && m.shareUrl) {
+            const qr = await generateQrCodeUrl(m.shareUrl);
+            modified = true;
+            return { ...m, qrCodeUrl: qr };
+          }
+          return m;
+        }));
+        if (modified) {
+          setMovies(updated);
+          localStorage.setItem('rowone_movies', JSON.stringify(updated));
+        }
+      } catch (err) {
+        console.warn('Background Qr generation failed:', err);
+      }
+    };
+    generateQrs();
+  }, []);
+
+  // Sync route slug on boot & handle popstate browser back/forward buttons
+  useEffect(() => {
+    const checkSlugRouting = async (pathStr: string) => {
+      const path = pathStr.toLowerCase().replace(/^\/+/, '');
+      const parts = path.split('/');
+      
+      if (parts.length >= 2 && (parts[0] === 'reels' || parts[0] === 'movies')) {
+        const contentType = parts[0] === 'reels' ? 'reel' : 'movie';
+        const slug = parts[1];
+        
+        // Find in state first
+        let matched = movies.find(m => m.slug === slug && m.contentType === contentType);
+        
+        if (!matched) {
+          // Retrieve dynamically from persistent database server index
+          try {
+            const resp = await fetch(`/api/content/by-slug/${contentType}/${slug}`);
+            if (resp.ok) {
+              const remoteItem = await resp.json();
+              if (remoteItem && remoteItem.id) {
+                matched = remoteItem;
+                // Add to movies state if not present
+                setMovies(prev => {
+                  if (!prev.some(m => m.id === remoteItem.id)) {
+                    const nextList = [remoteItem, ...prev];
+                    localStorage.setItem('rowone_movies', JSON.stringify(nextList));
+                    return nextList;
+                  }
+                  return prev;
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('Async slug dynamic lookup failed:', err);
+          }
+        } else {
+          // File was in local storage, increment analytics check
+          try {
+            fetch('/api/content/analytics', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: matched.id, updateType: 'click', referrer: document.referrer })
+            });
+          } catch (err) {
+            console.warn('Click analytics fail:', err);
+          }
+        }
+
+        if (matched) {
+          setSelectedMovieId(matched.id);
+          updateSeoTags({
+            title: matched.title,
+            synopsis: matched.synopsis,
+            imageUrl: matched.imageUrl,
+            contentType: matched.contentType,
+            slug: matched.slug
+          });
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // 1. Check current URL on mount
+    checkSlugRouting(window.location.pathname).then((onBootIsMovie) => {
+      if (!onBootIsMovie) {
+        // Default: set tab based on URL path
         const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
         if (path.startsWith('settings')) {
           setCurrentTabState('settings');
@@ -101,26 +249,197 @@ export default function App() {
         } else {
           setCurrentTabState('home');
         }
+      }
+    });
+
+    const handlePopStateSync = () => {
+      try {
+        checkSlugRouting(window.location.pathname).then((isMovie) => {
+          if (isMovie) return;
+
+          setSelectedMovieId(null);
+          resetSeoTags();
+
+          const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
+          if (path.startsWith('settings')) {
+            setCurrentTabState('settings');
+          } else if (path.startsWith('studio')) {
+            setCurrentTabState('studio');
+          } else if (path.startsWith('discover')) {
+            setCurrentTabState('discover');
+          } else if (path.startsWith('browse')) {
+            setCurrentTabState('browse');
+          } else if (path.startsWith('history')) {
+            setCurrentTabState('history');
+          } else if (path.startsWith('notifications')) {
+            setCurrentTabState('notifications');
+          } else {
+            setCurrentTabState('home');
+          }
+        });
       } catch (e) {
         console.warn('Popstate sync failed:', e);
       }
     };
     window.addEventListener('popstate', handlePopStateSync);
     return () => window.removeEventListener('popstate', handlePopStateSync);
-  }, []);
-  const [movies, setMovies] = useState<Movie[]>(INITIAL_MOVIES);
+  }, [movies]);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     return localStorage.getItem('isLoggedIn') === 'true';
   });
   const [username, setUsername] = useState<string>(() => {
     return localStorage.getItem('logged_in_username') || '';
   });
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   
   // Subscription tier stats
   const [isPopcornPass, setIsPopcornPass] = useState<boolean>(() => {
     return localStorage.getItem('isPopcornPass') === 'true';
   });
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
+  const [stripeVerifying, setStripeVerifying] = useState<boolean>(false);
+  const [stripeVerifyMessage, setStripeVerifyMessage] = useState<string>('');
+
+  // Stripe session verification handler on page boot / redirect
+  useEffect(() => {
+    const verifyStripeSession = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const stripeSuccess = urlParams.get('stripe_success');
+        const sessionId = urlParams.get('session_id');
+        const purchaseType = urlParams.get('type');
+        const simulated = urlParams.get('simulated');
+
+        if (stripeSuccess === 'true' && sessionId) {
+          setStripeVerifying(true);
+          setStripeVerifyMessage('Connecting to safe Stripe billing agent...');
+
+          const query = new URLSearchParams({
+            session_id: sessionId,
+            simulated: simulated || 'false',
+            userId: userProfile?.userId || localStorage.getItem('logged_in_user_id') || 'simulated_user',
+            email: userProfile?.email || 'user@example.com',
+            type: purchaseType || 'subscription',
+            movieTitle: urlParams.get('movieTitle') || '',
+            movieId: urlParams.get('movieId') || '',
+            time: urlParams.get('time') || '',
+            hall: urlParams.get('hall') || '',
+            seat: urlParams.get('seat') || '',
+            priceValue: urlParams.get('priceValue') || '12.50'
+          });
+
+          const res = await fetch(`/api/stripe/verify-session?${query.toString()}`);
+          const data = await res.json();
+
+          if (data.success) {
+            setStripeVerifyMessage('Payment verified successfully! Welcome aboard...');
+            
+            if (purchaseType === 'subscription') {
+              // Update local state instantly and write cache
+              setIsPopcornPass(true);
+              localStorage.setItem('isPopcornPass', 'true');
+              localStorage.setItem('subscription_tier', 'gold_premium');
+              
+              if (userProfile) {
+                const updated = { ...userProfile, subscriptionPlan: 'gold_premium' as const };
+                setUserProfile(updated);
+                await saveUserProfile(updated);
+              }
+              
+              // Trigger a beautiful notification
+              triggerAppNotification({
+                id: `stripe-sub-${Date.now()}`,
+                type: 'release',
+                title: 'Stripe Pass Subscribed',
+                message: 'Your Monthly ROWONE Pass has been activated. Welcome to premium cinema!',
+                timestamp: 'Just now',
+                movieTitle: 'Monthly Pass'
+              });
+
+              // Show UpgradeModal in success mode
+              setShowUpgradeModal(true);
+              sessionStorage.setItem('stripe_checkout_success_step', 'true');
+            } else if (purchaseType === 'studio') {
+              localStorage.setItem('popcorn_account_type', 'studio');
+              localStorage.setItem('popcorn_active_mode', 'studio');
+              localStorage.setItem('popcorn_studio_verified', 'true');
+              
+              setAccountType('studio');
+              setActiveMode('studio');
+
+              if (userProfile) {
+                const updated = { 
+                  ...userProfile, 
+                  accountType: 'studio' as const 
+                };
+                setUserProfile(updated);
+                await saveUserProfile(updated);
+              }
+
+              triggerAppNotification({
+                id: `stripe-studio-${Date.now()}`,
+                type: 'release',
+                title: '🎬 Studio Distributor Verified',
+                message: 'Your production studio brand is licensed and officially live. Screenings unlocked!',
+                timestamp: 'Just now',
+                movieTitle: 'Studio Activated'
+              });
+            } else if (purchaseType === 'ticket') {
+              // One-time ticket booked!
+              const seatName = urlParams.get('seat') || 'C6';
+              const ticketId = `T${Math.floor(Math.random() * 900000) + 100000}`;
+              const movie = movies.find(m => m.id === urlParams.get('movieId')) || movies[0];
+              
+              const newTicket = {
+                id: ticketId,
+                movieTitle: movie.title,
+                imageUrl: movie.imageUrl,
+                time: urlParams.get('time') || '19:00',
+                hall: urlParams.get('hall') || 'Premium Hall 1',
+                seat: seatName,
+                price: `$${parseFloat(urlParams.get('priceValue') || '12.50').toFixed(2)}`,
+                date: urlParams.get('date') || 'Today'
+              };
+
+              setBookedTickets(prev => {
+                const exists = prev.some(t => t.id === ticketId);
+                if (exists) return prev;
+                const next = [...prev, newTicket];
+                return next;
+              });
+
+              // Display the ticket receipt instantly
+              setShowTicketModal(newTicket);
+
+              triggerAppNotification({
+                id: `stripe-ticket-${Date.now()}`,
+                type: 'screening',
+                title: 'Ticket Purchased',
+                message: `Seat ${seatName} in ${newTicket.hall} purchased successfully via Stripe Checkout.`,
+                timestamp: 'Just now',
+                movieTitle: movie.title
+              });
+            }
+          } else {
+            console.warn('Stripe checkout verification reported unresolved status:', data.message);
+          }
+
+          // Clear query parameters
+          setTimeout(() => {
+            setStripeVerifying(false);
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Stripe verification effect crashed:', err);
+        setStripeVerifying(false);
+      }
+    };
+
+    verifyStripeSession();
+  }, [userProfile, movies]);
+
   const [upgradePitchMovie, setUpgradePitchMovie] = useState<string | undefined>(undefined);
   const [isSupportOpen, setIsSupportOpen] = useState<boolean>(false);
   const [supportContext, setSupportContext] = useState<{
@@ -171,6 +490,101 @@ export default function App() {
   const handleOpenAuthModal = (mode: 'signin' | 'signup' | 'register-studio') => {
     setAuthModalMode(mode);
     setShowAuthModal(true);
+  };
+
+  const syncAndLoadSaaSProfile = async (userId: string, email: string, forcedName?: string) => {
+    try {
+      let profile = await loadUserProfile(userId, email);
+      
+      // If we signed up and have a forced name, write it to profile
+      if (forcedName && (!profile.fullName || profile.fullName === email.split('@')[0])) {
+        profile = {
+          ...profile,
+          fullName: forcedName
+        };
+        await saveUserProfile(profile);
+      }
+
+      setUserProfile(profile);
+
+      // Now automatically populate states
+      if (profile.fullName) {
+        setUsername(profile.fullName);
+        localStorage.setItem('logged_in_username', profile.fullName);
+      }
+      if (profile.profileImage) {
+        setUserAvatarUrl(profile.profileImage);
+        localStorage.setItem('popcorn_user_avatar', profile.profileImage);
+      }
+      if (profile.userSettings) {
+        const settings = profile.userSettings;
+        setIsParentalModeActive(!!settings.parentalLockActive);
+        setParentMaxRating(settings.parentMaxRating || 'PG-13');
+        
+        setIsDyslexiaFontActive(!!settings.dyslexiaFontActive);
+        localStorage.setItem('popcorn_dyslexia', String(!!settings.dyslexiaFontActive));
+        
+        setIsQuietModeActive(!!settings.quietModeActive);
+        localStorage.setItem('popcorn_quiet_mode', String(!!settings.quietModeActive));
+        
+        setDisableReactionsAndAnimations(!!settings.disableReactions);
+        localStorage.setItem('popcorn_disable_reactions_animations', String(!!settings.disableReactions));
+        
+        setIsCinemaAmbientSoundActive(!!settings.ambientSoundActive);
+        localStorage.setItem('popcorn_cinema_ambient_sound', String(!!settings.ambientSoundActive));
+      }
+      
+      if (profile.subscriptionPlan) {
+        const isPass = profile.subscriptionPlan === 'gold_premium' || profile.subscriptionPlan === 'vip_platinum';
+        setIsPopcornPass(isPass);
+        localStorage.setItem('isPopcornPass', String(isPass));
+        localStorage.setItem('subscription_tier', profile.subscriptionPlan);
+      }
+
+      console.log('SaaS Profile Memory restored automatically! Settings populated.');
+    } catch (err) {
+      console.warn('Failed to load profile in App.tsx:', err);
+    }
+  };
+
+  const handleUpdateProfileLocal = async (updated: UserProfile) => {
+    setUserProfile(updated);
+    
+    // Propagate changes to separate React states so the UI reacts in real-time
+    if (updated.fullName && updated.fullName !== username) {
+      setUsername(updated.fullName);
+      localStorage.setItem('logged_in_username', updated.fullName);
+    }
+    if (updated.profileImage) {
+      setUserAvatarUrl(updated.profileImage);
+      localStorage.setItem('popcorn_user_avatar', updated.profileImage);
+    }
+    if (updated.userSettings) {
+      const settings = updated.userSettings;
+      setIsParentalModeActive(!!settings.parentalLockActive);
+      setParentMaxRating(settings.parentMaxRating || 'PG-13');
+      
+      setIsDyslexiaFontActive(!!settings.dyslexiaFontActive);
+      localStorage.setItem('popcorn_dyslexia', String(!!settings.dyslexiaFontActive));
+      
+      setIsQuietModeActive(!!settings.quietModeActive);
+      localStorage.setItem('popcorn_quiet_mode', String(!!settings.quietModeActive));
+      
+      setDisableReactionsAndAnimations(!!settings.disableReactions);
+      localStorage.setItem('popcorn_disable_reactions_animations', String(!!settings.disableReactions));
+      
+      setIsCinemaAmbientSoundActive(!!settings.ambientSoundActive);
+      localStorage.setItem('popcorn_cinema_ambient_sound', String(!!settings.ambientSoundActive));
+    }
+
+    if (updated.subscriptionPlan) {
+      const isPass = updated.subscriptionPlan === 'gold_premium' || updated.subscriptionPlan === 'vip_platinum';
+      setIsPopcornPass(isPass);
+      localStorage.setItem('isPopcornPass', String(isPass));
+      localStorage.setItem('subscription_tier', updated.subscriptionPlan);
+    }
+
+    return await saveUserProfile(updated);
   };
 
   // Synchronize profile details with Supabase Profiles Table matching current user / handle ID
@@ -313,6 +727,7 @@ export default function App() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           await syncUserRelationalData(session.user);
+          await syncAndLoadSaaSProfile(session.user.id, session.user.email || '');
         } else {
           const { data, error } = await supabase
             .from('profiles')
@@ -583,6 +998,7 @@ export default function App() {
   // Popup controller states
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
+  const [showQrScannerModal, setShowQrScannerModal] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>('');
 
@@ -625,15 +1041,6 @@ export default function App() {
         localStorage.setItem('popcorn_premiere_badges', JSON.stringify(nextBadges));
       } catch {}
       return nextBadges;
-    });
-
-    triggerAppNotification({
-      id: `badge-notif-${Date.now()}`,
-      type: 'release',
-      title: '🏆 Achievement Unlocked!',
-      message: `Congratulations! You have been awarded "${badgeName}" Commemorative Premiere Badge. View it on your Profile.`,
-      timestamp: 'Just now',
-      movieTitle: '',
     });
   };
 
@@ -1075,6 +1482,10 @@ export default function App() {
 
   // Helper dispatch trigger for toasts & command center
   const triggerAppNotification = (notif: Omit<AppNotification, 'isRead' | 'timeValue'>) => {
+    if (notif.title.toLowerCase().includes('achievement unlocked') || (notif.message && notif.message.toLowerCase().includes('achievement unlocked'))) {
+      return;
+    }
+    
     const fullNotif: AppNotification = {
       ...notif,
       isRead: false,
@@ -1148,6 +1559,34 @@ export default function App() {
     };
   }, []);
 
+  // Dismiss all live toast notifications on the screen when clicking on any other part of the screen
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (toasts.length > 0) {
+        const clickedInsideToast = target.closest('.live-toast-notification');
+        if (!clickedInsideToast) {
+          setToasts([]);
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [toasts]);
+
+  // Clear all notifications from history when user clicks any part of the screen
+  useEffect(() => {
+    const handleHistoryClearClick = () => {
+      setNotifications([]);
+    };
+    document.addEventListener('mousedown', handleHistoryClearClick);
+    return () => {
+      document.removeEventListener('mousedown', handleHistoryClearClick);
+    };
+  }, []);
+
   const handleNotificationAction = (notif: AppNotification) => {
     // mark selected notification item as read
     setNotifications((prev) =>
@@ -1178,8 +1617,91 @@ export default function App() {
   };
 
   // Navigation callbacks
+  const handleQrScannerNavigation = async (contentType: 'movie' | 'reel', slug: string) => {
+    let matched = movies.find(m => m.slug === slug && m.contentType === contentType);
+    if (!matched) {
+      matched = movies.find(m => m.slug === slug);
+    }
+
+    if (matched) {
+      handleSelectMovie(matched.id);
+      
+      try {
+        fetch('/api/content/analytics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: matched.id, updateType: 'qr_scan', referrer: document.referrer })
+        });
+      } catch (err) {
+        console.warn('Analytics tracking warning:', err);
+      }
+    } else {
+      try {
+        const resp = await fetch(`/api/content/by-slug/${contentType}/${slug}`);
+        if (resp.ok) {
+          const remoteItem = await resp.json();
+          if (remoteItem && remoteItem.id) {
+            setMovies(prev => {
+              if (!prev.some(m => m.id === remoteItem.id)) {
+                const nextList = [remoteItem, ...prev];
+                localStorage.setItem('rowone_movies', JSON.stringify(nextList));
+                return nextList;
+              }
+              return prev;
+            });
+            handleSelectMovie(remoteItem.id);
+            
+            fetch('/api/content/analytics', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: remoteItem.id, updateType: 'qr_scan', referrer: document.referrer })
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Dynamic lookup failed:', err);
+      }
+    }
+  };
+
   const handleSelectMovie = (id: string) => {
     setSelectedMovieId(id);
+    const foundMovie = movies.find(m => m.id === id);
+    if (foundMovie) {
+      const typeStr = foundMovie.contentType || 'movie';
+      const slugStr = foundMovie.slug || sanitizeTitleToSlug(foundMovie.title);
+      try {
+        const url = new URL(window.location.href);
+        url.pathname = `/${typeStr}s/${slugStr}`;
+        window.history.pushState({}, '', url.pathname + url.search);
+        
+        updateSeoTags({
+          title: foundMovie.title,
+          synopsis: foundMovie.synopsis,
+          imageUrl: foundMovie.imageUrl,
+          contentType: foundMovie.contentType,
+          slug: foundMovie.slug
+        });
+      } catch (e) {
+        console.warn('Push state for slug failed:', e);
+      }
+
+      // Increment view count
+      setMovies((prev) => {
+        const updated = prev.map((m) => {
+          if (m.id === id) {
+            return {
+              ...m,
+              views: (m.views || 0) + 1
+            };
+          }
+          return m;
+        });
+        localStorage.setItem('rowone_movies', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
     setRecentlyViewedIds((prev) => {
       const filtered = prev.filter((mId) => mId !== id);
       const next = [id, ...filtered].slice(0, 10);
@@ -1195,6 +1717,61 @@ export default function App() {
 
   const handleBackToGrid = () => {
     setSelectedMovieId(null);
+    try {
+      const url = new URL(window.location.href);
+      url.pathname = `/${currentTab === 'home' ? '' : currentTab.toLowerCase()}`;
+      window.history.pushState({}, '', url.pathname + url.search);
+      resetSeoTags();
+    } catch (e) {
+      console.warn('Reset path on back failed:', e);
+    }
+  };
+
+  const handleUpdateMovieAnalytics = async (movieId: string, updateType: 'click' | 'qr_scan' | 'share', platform?: string) => {
+    // 1. Update local state instantly for lightning-fast responsiveness
+    setMovies((prev) => {
+      const updated = prev.map((m) => {
+        if (m.id === movieId) {
+          const fresh = { ...m };
+          if (updateType === 'click') {
+            fresh.views = (fresh.views || 0) + 1;
+            fresh.linkClicks = (fresh.linkClicks || 0) + 1;
+          } else if (updateType === 'qr_scan') {
+            fresh.views = (fresh.views || 0) + 1;
+            fresh.qrScans = (fresh.qrScans || 0) + 1;
+          } else if (updateType === 'share') {
+            fresh.shares = (fresh.shares || 0) + 1;
+            if (platform) {
+              const platforms = { ...(fresh.sharesByPlatform || { whatsapp: 0, facebook: 0, x: 0, telegram: 0, email: 0, copy: 0 }) };
+              platforms[platform as keyof typeof platforms] = (platforms[platform as keyof typeof platforms] || 0) + 1;
+              fresh.sharesByPlatform = platforms;
+            }
+          }
+          return fresh;
+        }
+        return m;
+      });
+      localStorage.setItem('rowone_movies', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. Dispatch update metrics to backend API to store permanently
+    try {
+      fetch('/api/content/analytics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id: movieId,
+          updateType: updateType === 'click' ? 'click' : (updateType === 'qr_scan' ? 'qr_scan' : 'share'),
+          platform,
+          referrer: document.referrer
+        })
+      });
+    } catch (err) {
+      console.warn('Analytics backend dispatch warning:', err);
+    }
   };
 
   const handleBookSeat = (time: string, hall: string, price: string = '$12.50', date: string = 'today') => {
@@ -1297,12 +1874,49 @@ export default function App() {
     });
   };
 
-  const handleCompleteSeatSelection = (seatName: string, finalPrice: string) => {
+  const handleCompleteSeatSelection = async (seatName: string, finalPrice: string) => {
     if (!seatSelectionData) return;
     const { time, hall, date, movieTitle } = seatSelectionData;
     const movie = movies.find((m) => m.title === movieTitle);
     if (!movie) return;
 
+    const numericPriceVal = finalPrice.replace(/[^0-9.]/g, '');
+    const finalPriceVal = parseFloat(numericPriceVal) || 12.50;
+
+    // Contact Server to open secure Stripe Checkout gateway
+    try {
+      setStripeVerifying(true);
+      setStripeVerifyMessage('Redirecting to secure Stripe Checkout...');
+
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userProfile?.userId || localStorage.getItem('logged_in_user_id') || 'guest_user',
+          email: userProfile?.email || localStorage.getItem('logged_in_email') || 'cinephile@example.com',
+          type: 'ticket',
+          priceValue: finalPriceVal,
+          movieTitle: movie.title,
+          movieId: movie.id,
+          time,
+          hall,
+          seat: seatName,
+          date
+        })
+      });
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+        return; // Transitioning to hosted receipt payment frame
+      }
+    } catch (err) {
+      console.warn('Real Stripe ticket session launch failed. Proceeding with robust offline preview model:', err);
+    } finally {
+      setStripeVerifying(false);
+    }
+
+    // Default Local / Simulation Fallback
     const newTicket: BookedTicket = {
       id: `T${Math.floor(Math.random() * 900000) + 100000}`,
       movieTitle: movie.title,
@@ -1319,7 +1933,6 @@ export default function App() {
     // Set ticket item to prompt confirmation cinema ticket layout
     setShowTicketModal(newTicket);
 
-    // Log corresponding upcoming screening alert within Command Center notifications bell too
     const screeningNotif: AppNotification = {
       id: `not-scr-${Date.now()}`,
       type: 'screening',
@@ -1610,6 +2223,7 @@ export default function App() {
     
     try {
       await syncUserRelationalData(user, 'individual');
+      await syncAndLoadSaaSProfile(user.id, email, fullName);
     } catch (e) {
       console.warn('Syncing logged-in Google profile failed:', e);
     }
@@ -1646,6 +2260,7 @@ export default function App() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         await syncUserRelationalData(session.user, selectedAccountType || 'individual', dob);
+        await syncAndLoadSaaSProfile(session.user.id, session.user.email || '', name);
       } else {
         // Mock fallback if user is in trial/dev mode
         const fallbackType = selectedAccountType || 'individual';
@@ -1669,6 +2284,11 @@ export default function App() {
     } catch (e) {
       console.warn('Supabase sign out error:', e);
     }
+    if (userProfile) {
+      localStorage.removeItem(`popcorn_profile_cache_${userProfile.userId}`);
+    }
+    setUserProfile(null);
+
     setIsLoggedIn(false);
     setUsername('');
     setDobString('');
@@ -1870,6 +2490,7 @@ export default function App() {
             onClearWatchlist={handleClearWatchlist}
             allMovies={movies}
             onSelectMovie={handleSelectMovie}
+            onUpdateMovieAnalytics={handleUpdateMovieAnalytics}
             onCreateWatchParty={(movieId, roomName) => {
               if (!isLoggedIn) {
                 setShowAuthModal(true);
@@ -2003,13 +2624,16 @@ export default function App() {
             isCinemaAmbientSoundActive={isCinemaAmbientSoundActive}
             onUpdateCinemaAmbientSound={handleUpdateCinemaAmbientSound}
             onTriggerSupport={() => setIsSupportOpen(true)}
-            hasStudioAccount={hasStudioAccount}
+             hasStudioAccount={hasStudioAccount}
             onRegisterStudioClick={() => handleOpenAuthModal('register-studio')}
             activeMode={activeMode}
             onToggleActiveMode={(mode) => {
               setActiveMode(mode);
               localStorage.setItem('popcorn_active_mode', mode);
             }}
+            userProfile={userProfile}
+            onUpdateProfile={handleUpdateProfileLocal}
+            triggerAppNotification={triggerAppNotification}
           />
         );
       case 'notifications':
@@ -2183,6 +2807,7 @@ export default function App() {
         isLoggedIn={isLoggedIn}
         onOpenAuth={() => handleOpenAuthModal('signin')}
         onOpenSearch={() => setShowSearchModal(true)}
+        onOpenQrScanner={() => setShowQrScannerModal(true)}
         notifications={notifications}
         onNotificationAction={handleNotificationAction}
         onClearNotifications={handleClearNotifications}
@@ -2303,7 +2928,7 @@ export default function App() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="pointer-events-auto bg-surface-container-high/95 border border-primary/20 backdrop-blur-md px-4 py-3.5 rounded-2xl shadow-[0_4px_30px_rgba(255,42,77,0.15)] flex gap-3 animate-fade-in relative overflow-hidden"
+            className="live-toast-notification pointer-events-auto bg-surface-container-high/95 border border-primary/20 backdrop-blur-md px-4 py-3.5 rounded-2xl shadow-[0_4px_30px_rgba(255,42,77,0.15)] flex gap-3 animate-fade-in relative overflow-hidden"
           >
             <div className="shrink-0 pt-0.5">
               {toast.type === 'screening' && <Clock className="h-4.5 w-4.5 text-secondary" />}
@@ -2581,11 +3206,37 @@ export default function App() {
         </div>
       )}
 
+      {stripeVerifying && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl animate-fade-in select-none">
+          <div className="text-center space-y-6 max-w-sm px-6">
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full border-2 border-yellow-400/25 border-t-yellow-400 animate-spin" />
+              <div className="absolute h-8 w-8 rounded-full bg-yellow-400/10 flex items-center justify-center text-yellow-400">
+                <Lock className="h-4.5 w-4.5" />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="font-display text-lg font-black text-white tracking-wide uppercase">Stripe secure validation</h3>
+              <p className="font-mono text-[10px] text-zinc-400 tracking-wider">
+                {stripeVerifyMessage || 'Connecting to secure Stripe gateway...'}
+              </p>
+            </div>
+            
+            <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl text-[9px] text-zinc-500 leading-normal">
+              Please preserve this window loop alive. Complete security handshake verifies transactions instantly block-free.
+            </div>
+          </div>
+        </div>
+      )}
+
       {showUpgradeModal && (
         <UpgradeModal
           pitchMovieTitle={upgradePitchMovie}
           onUpgradeSuccess={handleUpgradeSuccess}
           onClose={() => setShowUpgradeModal(false)}
+          userId={userProfile?.userId}
+          userEmail={userProfile?.email}
         />
       )}
 
@@ -2621,6 +3272,12 @@ export default function App() {
         isOpen={isPrivacyOpen}
         onClose={() => setIsPrivacyOpen(false)}
         initialTab={privacyTab}
+      />
+
+      <QrScannerModal
+        isOpen={showQrScannerModal}
+        onClose={() => setShowQrScannerModal(false)}
+        onNavigateToContent={handleQrScannerNavigation}
       />
 
       {/* Floating Picture-in-Picture Screening Player */}

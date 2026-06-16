@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Armchair, X, Info, Sparkles, Check, Ticket, User, ShieldCheck, Clock } from 'lucide-react';
 import { BookedTicket } from '../types';
+import { StripePaymentButton } from './StripePaymentButton';
 
 interface SeatSelectionModalProps {
   movieTitle: string;
@@ -72,6 +73,11 @@ export default function SeatSelectionModal({
   const [selectedSeat, setSelectedSeat] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(300); // 5 minutes in seconds
   const [holdExpired, setHoldExpired] = useState<boolean>(false);
+  const [showPaymentForm, setShowPaymentForm] = useState<boolean>(false);
+
+  useEffect(() => {
+    setShowPaymentForm(false);
+  }, [selectedSeat]);
 
   useEffect(() => {
     const list = getDeterministicOccupiedSeats(movieTitle, date, time, currentShowBookings);
@@ -148,11 +154,6 @@ export default function SeatSelectionModal({
     } else {
       setSelectedSeat(seatId);
     }
-  };
-
-  const handleConfirmReservation = () => {
-    if (!selectedSeat || !selectedSeatDetails) return;
-    onConfirm(selectedSeat, selectedSeatDetails.priceFormatted);
   };
 
   const rows = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -431,25 +432,46 @@ export default function SeatSelectionModal({
 
             {/* Bottom confirmation action */}
             <div className="space-y-3 mt-6 border-t border-white/5 pt-4">
-              <button
-                disabled={!selectedSeat}
-                onClick={handleConfirmReservation}
-                className={`
-                  w-full py-3.5 px-4 rounded-xl font-sans text-[11px] font-black tracking-widest uppercase transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-lg
-                  ${selectedSeat 
-                    ? 'bg-primary hover:bg-primary-hover text-on-primary hover:scale-[1.01] active:scale-[0.99] shadow-primary/15'
-                    : 'bg-zinc-800 border border-zinc-700 text-zinc-500 cursor-not-allowed shadow-none'
-                  }
-                `}
-              >
-                <Ticket className="h-4 w-4" />
-                <span>CONFIRM MY RESERVATION</span>
-              </button>
-              
-              <div className="flex items-center justify-center gap-1.5 text-[9px] text-zinc-500 text-center font-sans">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500/80 shrink-0" />
-                <span>Seat holds inside room sync loop automatically</span>
-              </div>
+              {showPaymentForm ? (
+                <div className="animate-fade-in">
+                  <StripePaymentButton
+                    amount={parseFloat(selectedSeatDetails?.priceFormatted.replace('$', '') || '12.50')}
+                    movieTitle={movieTitle}
+                    movieId=""
+                    time={time}
+                    hall={hall}
+                    seat={selectedSeat || ''}
+                    onSuccess={(details) => {
+                      onConfirm(selectedSeat || '', selectedSeatDetails?.priceFormatted || '$12.50');
+                    }}
+                    onCancel={() => setShowPaymentForm(false)}
+                    userId={localStorage.getItem('logged_in_user_id') || undefined}
+                    email={localStorage.getItem('logged_in_email') || undefined}
+                  />
+                </div>
+              ) : (
+                <>
+                  <button
+                    disabled={!selectedSeat}
+                    onClick={() => setShowPaymentForm(true)}
+                    className={`
+                      w-full py-3.5 px-4 rounded-xl font-sans text-[11px] font-black tracking-widest uppercase transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-lg
+                      ${selectedSeat 
+                        ? 'bg-primary hover:bg-primary-hover text-on-primary hover:scale-[1.01] active:scale-[0.99] shadow-primary/15'
+                        : 'bg-zinc-800 border border-zinc-700 text-zinc-500 cursor-not-allowed shadow-none'
+                      }
+                    `}
+                  >
+                    <Ticket className="h-4 w-4" />
+                    <span>CONFIRM MY RESERVATION</span>
+                  </button>
+                  
+                  <div className="flex items-center justify-center gap-1.5 text-[9px] text-zinc-500 text-center font-sans">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-500/80 shrink-0" />
+                    <span>Seat holds inside room sync loop automatically</span>
+                  </div>
+                </>
+              )}
             </div>
 
           </div>

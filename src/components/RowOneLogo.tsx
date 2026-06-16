@@ -21,7 +21,7 @@ export default function RowOneLogo({
   goldColor = '#dda75f',
 }: RowOneLogoProps) {
   return (
-    <div className={`flex flex-col items-center justify-center ${className}`}>
+    <div className={`flex flex-col items-center justify-center group ${className}`}>
       <svg
         width={size}
         height={size}
@@ -118,10 +118,11 @@ export default function RowOneLogo({
       </svg>
       {showText && (
         <span 
-          className={`mt-2.5 font-serif text-[10px] tracking-[0.4em] font-black uppercase tracking-widest text-center select-none ${textColor}`}
+          className="mt-2.5 font-serif text-[10px] tracking-[0.4em] font-black tracking-widest text-center select-none"
           style={{ textShadow: '0 2px 4px rgba(0,0,0,0.4)' }}
         >
-          ROWONE
+          <span className="text-[#dda75f] group-hover:text-[#fde2af] transition-all duration-300 group-hover:[text-shadow:0_0_12px_rgba(253,226,175,0.7)]">Row</span>
+          <span className="text-white group-hover:text-white/95 transition-all duration-300 group-hover:[text-shadow:0_0_10px_rgba(255,255,255,0.5)]">One</span>
         </span>
       )}
     </div>

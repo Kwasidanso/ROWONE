@@ -203,6 +203,19 @@ export default function BrowseView({
     return () => clearTimeout(timer);
   }, [localToast]);
 
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (localToast && !target.closest('.browse-local-toast')) {
+        setLocalToast(null);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [localToast]);
+
   const toggleReminder = (movieId: string, movieTitle: string) => {
     const isSet = reminders.includes(movieId);
     if (isSet) {
@@ -1120,7 +1133,7 @@ export default function BrowseView({
 
       {/* Floating alert/local toast container */}
       {localToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#161212]/95 border-2 border-primary/45 p-4 rounded-xl shadow-2xl max-w-sm w-full animate-fade-in flex items-start gap-3 backdrop-blur-md">
+        <div className="browse-local-toast fixed bottom-6 right-6 z-50 bg-[#161212]/95 border-2 border-primary/45 p-4 rounded-xl shadow-2xl max-w-sm w-full animate-fade-in flex items-start gap-3 backdrop-blur-md">
           <div className="p-1.5 bg-primary/15 text-primary rounded-lg">
             <BellRing className="h-4.5 w-4.5 animate-bounce" />
           </div>

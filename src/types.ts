@@ -51,6 +51,29 @@ export interface Movie {
   uploadedFileName?: string;
   isUserUploaded?: boolean;
   screenings?: StudioScreening[];
+
+  // Share system & Ledger metadata properties
+  slug?: string;
+  contentType?: 'movie' | 'reel';
+  creatorId?: string;
+  originalVideoUrl?: string;
+  shareUrl?: string;
+  qrCodeUrl?: string;
+  uploadDate?: string;
+  views?: number;
+  shares?: number;
+  linkClicks?: number;
+  qrScans?: number;
+  referringSources?: { [source: string]: number };
+  uniqueVisitors?: string[];
+  sharesByPlatform?: {
+    whatsapp?: number;
+    facebook?: number;
+    x?: number;
+    telegram?: number;
+    email?: number;
+    copy?: number;
+  };
 }
 
 export interface ChatMessage {
@@ -159,3 +182,20 @@ export interface MovieReview {
   movieMoment?: string; // anchored to a movie moment, e.g. "01:22:04"
   upvotedByUsernames?: string[];
 }
+
+export interface UserPaymentMethod {
+  id: string;
+  userId: string;
+  provider: 'stripe' | 'paypal' | 'applepay' | 'googlepay';
+  customerId: string;
+  paymentMethodId: string;
+  cardBrand?: string; // e.g. "Visa", "Mastercard"
+  lastFourDigits?: string; // e.g. "4242"
+  expiryMonth?: number;
+  expiryYear?: number;
+  isDefault: boolean;
+  email?: string; // for PayPal accounts
+  createdAt: string;
+  updatedAt: string;
+}
+
