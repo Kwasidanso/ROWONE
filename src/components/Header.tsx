@@ -150,18 +150,6 @@ export default function Header({
       </nav>
 
       <div className="flex items-center gap-4">
-        {onOpenQrScanner && (
-          <button 
-            type="button"
-            onClick={onOpenQrScanner}
-            className="p-1.5 text-on-surface-variant hover:text-[#dda75f] active:scale-90 transition-all rounded-full hover:bg-white/5 flex items-center gap-1 group/qr"
-            title="Scan Film QR Code"
-          >
-            <QrCode className="h-4.5 w-4.5 group-hover/qr:scale-110 duration-200" />
-            <span className="hidden lg:inline text-[9px] font-sans font-black tracking-widest uppercase">Scan QR</span>
-          </button>
-        )}
-
         <button 
           onClick={onOpenSearch}
           className="p-1 text-on-surface-variant hover:text-primary active:scale-90 transition-all rounded-full hover:bg-white/5"
