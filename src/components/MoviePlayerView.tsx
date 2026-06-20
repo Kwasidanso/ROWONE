@@ -1905,6 +1905,162 @@ export default function MoviePlayerView({
     );
   }
 
+  const renderVisualAtmosphereLayer = () => {
+    // Determine the atmosphere based on the movie data or fallback
+    const atmosphere = movie.visualAtmosphere || (movie.genre === 'SCI-FI' ? 'neon-rain' : movie.genre === 'CLASSIC' ? 'retro-noise' : 'quiet-projection');
+
+    if (atmosphere === 'neon-rain') {
+      return (
+        <div id="atmosphere-neon-rain" className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-neutral-950">
+          <style>{`
+            @keyframes neonRainDrop {
+              0% { transform: translateY(-120%); opacity: 0; }
+              10% { opacity: 0.75; }
+              90% { opacity: 0.75; }
+              100% { transform: translateY(120vh); opacity: 0; }
+            }
+          `}</style>
+          {/* Base cyber grid */}
+          <div className="absolute inset-0 opacity-[0.06] bg-[linear-gradient(to_right,rgba(34,211,238,0.3)_1px,transparent_1px),linear-gradient(to_bottom,rgba(34,211,238,0.3)_1px,transparent_1px)] bg-[size:30px_30px]" />
+          <div className="absolute inset-0 bg-gradient-radial from-transparent to-neutral-950/80" />
+
+          {/* Rain streaks */}
+          <div className="absolute inset-0 opacity-40">
+            {[...Array(16)].map((_, i) => {
+              const leftOffset = `${(i * 6.25) + (i % 3 === 0 ? 1 : -1) * (i % 2 === 0 ? 0.5 : 1.5)}%`;
+              const delay = `${(i * 0.35) % 4}s`;
+              const duration = `${2.5 + ((i * 0.45) % 3)}s`;
+              const isCyan = i % 2 === 0;
+              return (
+                <div
+                  key={i}
+                  className={`absolute w-[1.5px] rounded-full bg-gradient-to-b ${
+                    isCyan 
+                      ? 'from-cyan-400 via-sky-400/40 to-transparent shadow-[0_0_8px_rgba(34,211,238,0.5)]' 
+                      : 'from-fuchsia-400 via-pink-400/40 to-transparent shadow-[0_0_8px_rgba(232,121,249,0.5)]'
+                  }`}
+                  style={{
+                    left: leftOffset,
+                    top: '-20%',
+                    height: `${60 + (i % 4) * 20}px`,
+                    animation: `neonRainDrop ${duration} linear infinite`,
+                    animationDelay: delay,
+                  }}
+                />
+              );
+            })}
+          </div>
+          
+          {/* Subtle colorful neon lights focal point */}
+          <div className="absolute top-[10%] left-[20%] w-72 h-72 rounded-full bg-cyan-500/5 filter blur-3xl" />
+          <div className="absolute bottom-[20%] right-[15%] w-80 h-80 rounded-full bg-fuchsia-500/5 filter blur-3xl" />
+          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-neutral-950/60" />
+        </div>
+      );
+    }
+
+    if (atmosphere === 'retro-noise') {
+      return (
+        <div id="atmosphere-retro-noise" className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-[#0a0706]">
+          <style>{`
+            @keyframes filmGrainNoise {
+              0% { transform: translate(0, 0); }
+              10% { transform: translate(-0.5%, -0.5%); }
+              20% { transform: translate(-1%, 0.5%); }
+              30% { transform: translate(0.5%, -1%); }
+              40% { transform: translate(-0.5%, 1.5%); }
+              50% { transform: translate(-1%, 0.5%); }
+              60% { transform: translate(1%, 1%); }
+              70% { transform: translate(1.5%, -1.5%); }
+              80% { transform: translate(-0.5%, 0.5%); }
+              90% { transform: translate(0.5%, 1%); }
+              100% { transform: translate(0, 0); }
+            }
+          `}</style>
+          
+          {/* Master sepia tint & glow */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(186,134,75,0.08)_0%,transparent_80%)]" />
+
+          {/* Simulated 35mm scanner scanlines */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(0,0,0,0.25)_50%)] bg-[size:100%_6px] opacity-25" />
+
+          {/* Film noise overlay utilizing basic SVG noise filter */}
+          <div 
+            className="absolute -inset-[30%] opacity-[0.05]"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+              animation: 'filmGrainNoise 0.18s steps(3) infinite',
+            }}
+          />
+
+          {/* Random cinematic scratch simulation */}
+          <div className="absolute inset-0 opacity-[0.1]">
+            <div className="absolute left-[33%] top-0 bottom-0 w-[1px] bg-amber-400/30" />
+            <div className="absolute left-[66%] top-0 bottom-0 w-[1px] bg-red-400/20" />
+          </div>
+
+          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-neutral-950/60" />
+        </div>
+      );
+    }
+
+    // Default 'quiet-projection'
+    return (
+      <div id="atmosphere-quiet-projection" className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-[#05070a]">
+        <style>{`
+          @keyframes projectionConeDrift {
+            0% { transform: rotate(0deg) scale(1); opacity: 0.15; }
+            50% { transform: rotate(120deg) scale(1.1); opacity: 0.3; }
+            100% { transform: rotate(240deg) scale(1); opacity: 0.15; }
+          }
+          @keyframes dustFloatUp {
+            0% { transform: translateY(11vh) translateX(0px); opacity: 0; }
+            30% { opacity: 0.35; }
+            70% { opacity: 0.35; }
+            100% { transform: translateY(-11vh) translateX(15px); opacity: 0; }
+          }
+        `}</style>
+        
+        {/* Soft rotating projection beam overlay */}
+        <div 
+          className="absolute -top-[15%] left-[15%] w-[70%] h-[110%] rounded-full bg-gradient-to-b from-amber-100/20 via-blue-400/5 to-transparent blur-3xl pointer-events-none"
+          style={{
+            animation: 'projectionConeDrift 24s ease-in-out infinite alternate',
+          }}
+        />
+
+        {/* Floating dust motes in screen projection light beam */}
+        <div className="absolute inset-0 opacity-[0.2]">
+          {[...Array(12)].map((_, i) => {
+            const leftOffset = `${20 + (i * 9) % 60}%`;
+            const topOffset = `${15 + (i * 11) % 60}%`;
+            const duration = `${5 + (i % 3) * 2.5}s`;
+            const size = `${3 + (i % 4)}px`;
+            const delay = `${i * 0.8}s`;
+            return (
+              <div 
+                key={i}
+                className="absolute rounded-full bg-amber-200/50 shadow-[0_0_5px_rgba(251,191,36,0.6)]"
+                style={{
+                  width: size,
+                  height: size,
+                  left: leftOffset,
+                  top: topOffset,
+                  animation: `dustFloatUp ${duration} ease-in-out infinite`,
+                  animationDelay: delay
+                }}
+              />
+            );
+          })}
+        </div>
+
+        {/* Soft atmospheric gradient */}
+        <div className="absolute inset-0 bg-gradient-radial from-transparent via-neutral-950/40 to-neutral-950" />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-neutral-950/60" />
+      </div>
+    );
+  };
+
   return (
     <div 
       ref={playerContainerRef}
@@ -2011,10 +2167,12 @@ export default function MoviePlayerView({
             mobileChatState === 'collapsed' ? 'h-full md:h-full' :
             mobileChatState === 'compact' ? 'h-[58vh] md:h-full' : 'h-[22vh] md:h-full'
           }`}
-          style={{ backgroundImage: `radial-gradient(circle at top, rgba(221, 167, 95, 0.08) 0%, rgba(0,0,0,0) 80%)` }}
         >
-          {/* Subtle Ambient Foyer Backdrop poster glow */}
-          <div className="absolute inset-0 z-0 pointer-events-none opacity-20 filter blur-3xl overflow-hidden scale-110">
+          {/* Dynamic Visual Atmosphere Background Layer */}
+          {renderVisualAtmosphereLayer()}
+
+          {/* Subtle Foyer Backdrop overlay for added depth alignment */}
+          <div className="absolute inset-0 z-0 pointer-events-none opacity-5 filter blur-2xl overflow-hidden scale-110">
             <img src={movie.imageUrl} alt="" className="w-full h-full object-cover" />
           </div>
 
@@ -2033,6 +2191,15 @@ export default function MoviePlayerView({
                 <p className="font-sans text-[11px] text-[#dac6a8]/70 max-w-lg lowercase">
                   take your digital seats, vote on characters, solve movie trivia, and enjoy the ambient foyer chatter before the cinema reels start spinning!
                 </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="font-mono text-[8.5px] text-[#dda75f] bg-[#dda75f]/10 border border-[#dda75f]/20 px-2.5 py-1 rounded-lg lowercase inline-flex items-center gap-1.5 shadow-inner select-none">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>ambient atmosphere:</span>
+                    <strong className="uppercase font-sans font-black tracking-wider text-white">
+                      {movie.visualAtmosphere === 'neon-rain' ? 'neon rain' : movie.visualAtmosphere === 'retro-noise' ? 'retro noise' : 'projection cone'}
+                    </strong>
+                  </span>
+                </div>
               </div>
 
               {/* Countdown section */}

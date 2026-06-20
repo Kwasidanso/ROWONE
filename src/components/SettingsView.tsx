@@ -128,6 +128,51 @@ export default function SettingsView({
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [decryptedKeysMap, setDecryptedKeysMap] = useState<Record<string, string>>({});
 
+  // Deactivation state machine
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [deactivateInput, setDeactivateInput] = useState('');
+
+  const handleDeactivateAccount = async () => {
+    if (deactivateInput !== 'DEACTIVATE') return;
+
+    try {
+      if (triggerAppNotification) {
+        triggerAppNotification({
+          id: `deactivate-${Date.now()}`,
+          type: 'release',
+          title: 'Account Deactivated ☣️',
+          message: 'Your profile configuration, integration links, and custom API tokens have been successfully wiped from our database registries.',
+          timestamp: 'Just now',
+          movieTitle: 'System Account'
+        });
+      }
+
+      if (userProfile && onUpdateProfile) {
+        const emptiedProfile = {
+          ...userProfile,
+          fullName: 'Deactivated User',
+          companyName: '',
+          phoneNumber: '',
+          website: '',
+          address: '',
+          apiKeys: [],
+          connectedServices: { googleConnected: false, discordConnected: false, stripeConnected: false }
+        };
+        await onUpdateProfile(emptiedProfile);
+      }
+
+      if (onSignOut) {
+        setTimeout(() => {
+          onSignOut();
+        }, 1500);
+      }
+
+    } catch (err) {
+      console.error('Error deactivating profile:', err);
+      alert('An error occurred during deactivation.');
+    }
+  };
+
   // Asynchronously decrypt all API keys on load or update using SubtleCrypto API
   useEffect(() => {
     if (userProfile?.apiKeys && userProfile?.userId) {
@@ -1672,6 +1717,79 @@ export default function SettingsView({
                             }`} />
                           </button>
                         </div>
+                      </div>
+                    </div>
+
+                    <hr className="border-white/5" />
+
+                    {/* section: 6. Danger Zone - Deactivate Account */}
+                    <div className="space-y-4">
+                      <h4 className="font-display text-[10px] font-black tracking-widest text-red-500 uppercase select-none flex items-center gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-red-500 animate-pulse" />
+                        <span>6. Danger Zone – Account Deactivation</span>
+                      </h4>
+                      
+                      <div className="p-4.5 bg-red-950/10 border border-red-500/10 rounded-2xl text-left space-y-4">
+                        <div className="space-y-1">
+                          <span className="block font-sans font-black text-red-400 text-[10px] uppercase tracking-wide">
+                            Deactivate Account Permanently
+                          </span>
+                          <p className="font-sans text-[11px] text-zinc-400 leading-relaxed lowercase">
+                            Deactivating your profile will permanently scrub your professional identity indices, clear your cloud integrated API keys, wipe saved session preferences, and dissolve verified studio roles. This operation is absolute and cannot be undone.
+                          </p>
+                        </div>
+
+                        {!showDeactivateConfirm ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowDeactivateConfirm(true)}
+                            className="px-4 py-2 bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/20 hover:border-red-500/40 rounded-xl font-sans text-[9px] font-black uppercase tracking-wider transition-all duration-200 active:scale-95 cursor-pointer"
+                          >
+                            Deactivate Account...
+                          </button>
+                        ) : (
+                          <div className="space-y-3 pt-2 border-t border-white/5 animate-fade-in">
+                            <span className="block font-sans font-bold text-[#ede6e3] text-[9.5px] uppercase">
+                              Are you absolutely sure? Type <span className="text-red-400 font-mono font-black select-all">DEACTIVATE</span> to verify deactivation:
+                            </span>
+                            
+                            <div className="flex flex-col sm:flex-row gap-2.5">
+                              <input
+                                type="text"
+                                placeholder="Type DEACTIVATE"
+                                value={deactivateInput}
+                                onChange={(e) => setDeactivateInput(e.target.value)}
+                                className="flex-1 bg-black/60 border border-red-500/30 focus:border-red-500 focus:outline-none rounded-xl px-3.5 py-2 text-on-surface font-sans text-xs transition-colors"
+                              />
+                              
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowDeactivateConfirm(false);
+                                    setDeactivateInput('');
+                                  }}
+                                  className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-sans text-[9px] font-bold uppercase transition-all cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                
+                                <button
+                                  type="button"
+                                  disabled={deactivateInput !== 'DEACTIVATE'}
+                                  onClick={handleDeactivateAccount}
+                                  className={`px-4 py-2 rounded-xl font-sans text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                                    deactivateInput === 'DEACTIVATE'
+                                      ? 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-500/20'
+                                      : 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed border border-white/5'
+                                  }`}
+                                >
+                                  Confirm Permanent Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -8,7 +8,8 @@ import {
   Upload, DollarSign, Users, Star, Bolt, Film, Plus, 
   Crown, Calendar, Video, Landmark, TrendingUp, AlertCircle, Play,
   Trash2, Image, FileVideo, ShieldCheck, ArrowUpRight, ArrowDownLeft, 
-  RefreshCw, Clock, Wallet, TrendingDown, Globe, Eye
+  RefreshCw, Clock, Wallet, TrendingDown, Globe, Eye, Sparkles, Sliders,
+  Save, Bookmark, FileSpreadsheet
 } from 'lucide-react';
 import { Movie, StudioScreening } from '../types';
 import { supabase } from '../lib/supabaseClient';
@@ -17,10 +18,25 @@ interface StudioViewProps {
   movies: Movie[];
   onUploadFilmMovie: (movie: Partial<Movie>) => void;
   onScheduleScreening: (movieId: string, screening: Omit<StudioScreening, 'id' | 'viewersCount' | 'revenueEarned' | 'avgRating' | 'isAvailable'>) => void;
+  onScheduleScreeningsBulk?: (screenings: {
+    movieId: string;
+    time: string;
+    date: string;
+    ticketPrice: number;
+    hallName: string;
+    features: string;
+    isPremiere?: boolean;
+  }[]) => void;
   onStartWatchParty?: (movieId: string, roomName: string) => void;
 }
 
-export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreening, onStartWatchParty }: StudioViewProps) {
+export default function StudioView({ 
+  movies, 
+  onUploadFilmMovie, 
+  onScheduleScreening, 
+  onScheduleScreeningsBulk,
+  onStartWatchParty 
+}: StudioViewProps) {
   // Setup standard state tab
   const [activeTab, setActiveTabState] = useState<'upload' | 'schedule' | 'editor' | 'earnings'>('upload');
 
@@ -449,6 +465,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
   const [trailerUrl, setTrailerUrl] = useState('');
   const [castInput, setCastInput] = useState('Julian Thorne, Elena Vance, Marcus Reed');
   const [isPremiere, setIsPremiere] = useState(false);
+  const [visualAtmosphere, setVisualAtmosphere] = useState<'neon-rain' | 'retro-noise' | 'quiet-projection'>('neon-rain');
 
   // --- LOCAL VIDEO FILE UPLOADER STATE VECTORS ---
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -473,6 +490,173 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
   const [hallName, setHallName] = useState('Dolby Premium Hall');
   const [featuresInput, setFeaturesInput] = useState('Laser Projection • Spatial Audio');
   const [isPremiereScreening, setIsPremiereScreening] = useState(false);
+
+  // --- SCHEDULING SHORTCUT/TEMPLATE SYSTEM ---
+  interface ScreeningTemplate {
+    id: string;
+    name: string;
+    screenTime: string;
+    screenDate: string;
+    ticketPrice: number;
+    hallName: string;
+    featuresInput: string;
+    isPremiereScreening: boolean;
+    isPreset?: boolean;
+  }
+
+  const DEFAULT_TEMPLATES: ScreeningTemplate[] = [
+    {
+      id: 't-matinee',
+      name: 'Matinee Special',
+      screenTime: '13:00',
+      screenDate: 'Today',
+      ticketPrice: 6.50,
+      hallName: 'Matinee Lounge Lane',
+      featuresInput: 'Standard Digital • Free Popcorn • Half Price',
+      isPremiereScreening: false,
+      isPreset: true,
+    },
+    {
+      id: 't-midnight',
+      name: 'Midnight Premiere',
+      screenTime: '23:59',
+      screenDate: 'Tomorrow',
+      ticketPrice: 18.00,
+      hallName: 'Laser IMAX Grand Suite',
+      featuresInput: 'Spatial Audio • Dynamic Haptics • Red Carpet Entry',
+      isPremiereScreening: true,
+      isPreset: true,
+    },
+    {
+      id: 't-sunday',
+      name: 'Lazy Sunday Classics',
+      screenTime: '16:15',
+      screenDate: 'Sunday',
+      ticketPrice: 9.00,
+      hallName: 'Retro Classic Projection Suite',
+      featuresInput: '35mm Grain Filter • Velvet Luxury Recliners',
+      isPremiereScreening: false,
+      isPreset: true,
+    },
+  ];
+
+  const [templates, setTemplates] = useState<ScreeningTemplate[]>(() => {
+    try {
+      const stored = localStorage.getItem('rowone-screening-templates');
+      if (stored) {
+        const custom = JSON.parse(stored);
+        return [...DEFAULT_TEMPLATES, ...custom];
+      }
+    } catch {}
+    return DEFAULT_TEMPLATES;
+  });
+
+  const [templateName, setTemplateName] = useState('');
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+
+  // Bulk Scheduling states
+  const [scheduleMode, setScheduleMode] = useState<'single' | 'bulk'>('single');
+  const [bulkCsvText, setBulkCsvText] = useState<string>('');
+  const [isDraggingCsv, setIsDraggingCsv] = useState<boolean>(false);
+  const [bulkValidationResults, setBulkValidationResults] = useState<{
+    rows: any[];
+    total: number;
+    validCount: number;
+    conflictCount: number;
+    errorCount: number;
+  } | null>(null);
+
+  const handleLoadTemplate = (template: ScreeningTemplate) => {
+    setScreenTime(template.screenTime);
+    setScreenDate(template.screenDate);
+    setTicketPrice(template.ticketPrice);
+    setHallName(template.hallName);
+    setFeaturesInput(template.featuresInput);
+    setIsPremiereScreening(template.isPremiereScreening);
+    setSaveSuccessMessage(`loaded '${template.name}' successfully!`);
+    setTimeout(() => setSaveSuccessMessage(''), 3000);
+  };
+
+  const handleSaveTemplate = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!templateName.trim()) {
+      alert("Please specify a name for your custom template.");
+      return;
+    }
+
+    const newTemplate: ScreeningTemplate = {
+      id: `t-custom-${Date.now()}`,
+      name: templateName.trim(),
+      screenTime,
+      screenDate,
+      ticketPrice,
+      hallName,
+      featuresInput,
+      isPremiereScreening,
+      isPreset: false,
+    };
+
+    const updatedTemplates = [...templates, newTemplate];
+    setTemplates(updatedTemplates);
+
+    // Save only custom templates to localStorage
+    const customOnly = updatedTemplates.filter(t => !t.isPreset);
+    localStorage.setItem('rowone-screening-templates', JSON.stringify(customOnly));
+    
+    setTemplateName('');
+    setSaveSuccessMessage(`saved '${newTemplate.name}' template!`);
+    setTimeout(() => setSaveSuccessMessage(''), 3000);
+  };
+
+  const handleDeleteTemplate = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const updated = templates.filter(t => t.id !== id);
+    setTemplates(updated);
+    const customOnly = updated.filter(t => !t.isPreset);
+    localStorage.setItem('rowone-screening-templates', JSON.stringify(customOnly));
+    setSaveSuccessMessage(`removed template!`);
+    setTimeout(() => setSaveSuccessMessage(''), 2000);
+  };
+
+  // --- REAL-TIME LIVE NOW OSCILLATION STATE ENGINE ---
+  const [liveViewerFluctuations, setLiveViewerFluctuations] = useState<Record<string, number>>({});
+  const [lastActivityTime, setLastActivityTime] = useState<string>('just now');
+
+  useEffect(() => {
+    // Periodically update the fluctuation to simulate live people joining/leaving
+    const interval = setInterval(() => {
+      setLiveViewerFluctuations((prev) => {
+        const updated = { ...prev };
+        
+        // Populate fluctuation for default analytics/seed rooms
+        const simulatedIds = ['an-1', 'an-2', 'an-3', 'live-demo-1', 'live-demo-2'];
+        simulatedIds.forEach(id => {
+          const base = prev[id] || 0;
+          // Random walk of -3 to +3
+          const delta = Math.floor(Math.random() * 7) - 3;
+          updated[id] = Math.max(-15, Math.min(25, base + delta));
+        });
+
+        // Populate for current user-scheduled screenings
+        movies.forEach(m => {
+          m.screenings?.forEach(scr => {
+            const base = prev[scr.id] || 0;
+            const delta = Math.floor(Math.random() * 5) - 2;
+            updated[scr.id] = Math.max(-10, Math.min(15, base + delta));
+          });
+        });
+
+        return updated;
+      });
+
+      // Update the human-readable seconds tracker
+      const s = ['just now', '1s ago', '3s ago', '5s ago', '12s ago'];
+      setLastActivityTime(s[Math.floor(Math.random() * s.length)]);
+    }, 2800);
+
+    return () => clearInterval(interval);
+  }, [movies]);
 
   // Handle uploaded film
   const handleUploadSubmit = async (e: React.FormEvent) => {
@@ -514,7 +698,8 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
           runtime,
           format,
           imageUrl: parsedPoster,
-          heroImageUrl: parsedBanner
+          heroImageUrl: parsedBanner,
+          visualAtmosphere
         })
       });
 
@@ -530,7 +715,8 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
         tag: isPremiere ? 'PREMIERE' : 'NEW RELEASE',
         videoBlobUrl: videoBlobUrl || undefined,
         uploadedFileName: uploadedFileName || undefined,
-        isUserUploaded: true
+        isUserUploaded: true,
+        visualAtmosphere: visualAtmosphere || serverDocs.visualAtmosphere || 'neon-rain'
       };
 
       onUploadFilmMovie(finalized);
@@ -569,6 +755,7 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
         videoBlobUrl: videoBlobUrl || undefined,
         uploadedFileName: uploadedFileName || undefined,
         isUserUploaded: true,
+        visualAtmosphere: visualAtmosphere || 'neon-rain',
         slug: cleanSlug,
         shareUrl,
         views: 0,
@@ -702,12 +889,440 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
     alert("🎉 Successfully batched 6 feature films in your filmography! You have unlocked your 'Verified Filmmaker' badge!");
   };
 
+  // --- TIMELINE OVERLAP UTILITIES ---
+  const parseTimeToMinutes = (timeStr: string): number => {
+    const parts = timeStr.trim().split(':');
+    if (parts.length < 2) return 0;
+    const hours = parseInt(parts[0], 10) || 0;
+    const minutes = parseInt(parts[1], 10) || 0;
+    return hours * 60 + minutes;
+  };
+
+  const parseRuntimeToMinutes = (runtimeStr: string): number => {
+    if (!runtimeStr) return 120; // Default 2 hours if not specified
+    const hMatch = runtimeStr.match(/(\d+)\s*h/i);
+    const mMatch = runtimeStr.match(/(\d+)\s*m/i);
+    const hours = hMatch ? parseInt(hMatch[1], 10) : 0;
+    const minutes = mMatch ? parseInt(mMatch[1], 10) : 0;
+    if (!hMatch && !mMatch) {
+      const num = parseInt(runtimeStr, 10);
+      if (!isNaN(num)) return num;
+      return 120;
+    }
+    return hours * 60 + minutes;
+  };
+
+  const parseInputTime = (timeStr: string): { hours: number; minutes: number } | null => {
+    const trimmed = timeStr.trim();
+    const match = trimmed.match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (!match) return null;
+    return {
+      hours: parseInt(match[1], 10),
+      minutes: parseInt(match[2], 10)
+    };
+  };
+
+  const minutesToHHMM = (totalMins: number): string => {
+    const normalized = totalMins % 1440; // wrap-around just in case
+    const hrs = Math.floor(normalized / 60);
+    const mins = normalized % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  };
+
+  // --- BULK SCHEDULER UTILITIES & PARSER ---
+  const parseCSV = (text: string) => {
+    const result: { rowObj: Record<string, string>; rowIndex: number }[] = [];
+    if (!text.trim()) return result;
+    const lines = text.split(/\r?\n/);
+    if (lines.length === 0) return result;
+    
+    // Find headers from row 1
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+    
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let charIndex = 0; charIndex < line.length; charIndex++) {
+        const char = line[charIndex];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim().replace(/^["']|["']$/g, ''));
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim().replace(/^["']|["']$/g, ''));
+      
+      if (values.length === 0 || (values.length === 1 && values[0] === '')) continue;
+      
+      const rowObj: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        rowObj[header] = values[index] || '';
+      });
+      result.push({ rowObj, rowIndex: i + 1 });
+    }
+    return result;
+  };
+
+  const findMovie = (needle: string) => {
+    if (!needle) return null;
+    const cleanNeedle = needle.toLowerCase().trim();
+    // 1. Exact match on ID
+    let match = movies.find(m => m.id.toLowerCase() === cleanNeedle);
+    if (match) return match;
+    // 2. Exact match on Title
+    match = movies.find(m => m.title.toLowerCase() === cleanNeedle);
+    if (match) return match;
+    // 3. Substring match on Title
+    match = movies.find(m => m.title.toLowerCase().includes(cleanNeedle));
+    if (match) return match;
+    return null;
+  };
+
+  const validateBulkCsv = (csvText: string) => {
+    if (!csvText.trim()) {
+      setBulkValidationResults(null);
+      return;
+    }
+
+    const parsed = parseCSV(csvText);
+    const rows: any[] = [];
+    
+    // Compile current scheduled screenings
+    const activePool: {
+      id: string;
+      movieTitle: string;
+      date: string;
+      time: string;
+      startMins: number;
+      endMins: number;
+      hallName: string;
+    }[] = [];
+
+    movies.forEach((m) => {
+      if (m.screenings) {
+        m.screenings.forEach((scr) => {
+          const startMins = parseTimeToMinutes(scr.time);
+          const durationMins = parseRuntimeToMinutes(m.runtime || '2h 00m');
+          activePool.push({
+            id: scr.id,
+            movieTitle: m.title,
+            date: scr.date,
+            time: scr.time,
+            startMins,
+            endMins: startMins + durationMins,
+            hallName: scr.hallName
+          });
+        });
+      }
+    });
+
+    parsed.forEach((item) => {
+      const row = item.rowObj;
+      
+      const movieInput = row.movietitle || row.movie || row.title || row.movieid || row.id || '';
+      const resolvedMovie = findMovie(movieInput);
+      const date = row.date || row.day || row.screendate || 'Today';
+      const time = row.time || row.showtime || row.start || row.starttime || '';
+      const parsedPrice = parseFloat(row.price || row.ticketprice || row.admission || '12.50');
+      const price = isNaN(parsedPrice) ? 12.50 : parsedPrice;
+      const hall = row.hall || row.hallname || row.room || row.lounge || 'Dolby Premium Hall';
+      const features = row.features || row.attributes || row.tech || 'Laser Projection • Spatial Audio';
+      const isPremiereVal = (row.ispremiere || row.premiere || 'false').toLowerCase().trim();
+      const isPremiere = isPremiereVal === 'true' || isPremiereVal === 'yes' || isPremiereVal === '1';
+
+      if (!movieInput) {
+        rows.push({
+          index: item.rowIndex,
+          movieTitle: 'Unknown',
+          resolvedMovie: null,
+          time,
+          date,
+          price,
+          hallName: hall,
+          features,
+          isPremiere,
+          status: 'error',
+          errorMessage: 'Missing key movie identifier (title or ID header)'
+        });
+        return;
+      }
+
+      if (!resolvedMovie) {
+        rows.push({
+          index: item.rowIndex,
+          movieTitle: movieInput,
+          resolvedMovie: null,
+          time,
+          date,
+          price,
+          hallName: hall,
+          features,
+          isPremiere,
+          status: 'error',
+          errorMessage: `Movie '${movieInput}' was not found in studio index.`
+        });
+        return;
+      }
+
+      const parsedTime = parseInputTime(time);
+      if (!parsedTime) {
+        rows.push({
+          index: item.rowIndex,
+          movieTitle: resolvedMovie.title,
+          resolvedMovie,
+          time,
+          date,
+          price,
+          hallName: hall,
+          features,
+          isPremiere,
+          status: 'error',
+          errorMessage: `Invalid clock time '${time}' (HH:MM is required, e.g. 17:30).`
+        });
+        return;
+      }
+
+      const proposedStart = parsedTime.hours * 60 + parsedTime.minutes;
+      const proposedDuration = parseRuntimeToMinutes(resolvedMovie.runtime || '2h 00m');
+      const proposedEnd = proposedStart + proposedDuration;
+
+      // Overlap with existing scheduled screenings
+      const existingConflicts = activePool.filter(scr => 
+        scr.date.toLowerCase() === date.toLowerCase() &&
+        scr.hallName.trim().toLowerCase() === hall.trim().toLowerCase() &&
+        proposedStart < scr.endMins && proposedEnd > scr.startMins
+      );
+
+      if (existingConflicts.length > 0) {
+        const conflictMsg = existingConflicts.map(scr => 
+          `"${scr.movieTitle}" at ${scr.time}`
+        ).join(', ');
+        
+        rows.push({
+          index: item.rowIndex,
+          movieTitle: resolvedMovie.title,
+          resolvedMovie,
+          time,
+          date,
+          price,
+          hallName: hall,
+          features,
+          isPremiere,
+          status: 'conflict',
+          conflictDetails: `Double-books theater with existing: ${conflictMsg}`
+        });
+      } else {
+        // Trace internal collisions in same CSV session
+        const internalConflicts = rows.filter(r => 
+          r.status === 'valid' &&
+          r.date.toLowerCase() === date.toLowerCase() &&
+          r.hallName.trim().toLowerCase() === hall.trim().toLowerCase()
+        ).filter(r => {
+          const otherTime = parseInputTime(r.time);
+          if (!otherTime) return false;
+          const oStart = otherTime.hours * 60 + otherTime.minutes;
+          const oDuration = parseRuntimeToMinutes(r.resolvedMovie?.runtime || '2h 00m');
+          const oEnd = oStart + oDuration;
+          return proposedStart < oEnd && proposedEnd > oStart;
+        });
+
+        if (internalConflicts.length > 0) {
+          const conflictMsg = internalConflicts.map(r => 
+            `row #${r.index} ("${r.movieTitle}" at ${r.time})`
+          ).join(', ');
+
+          rows.push({
+            index: item.rowIndex,
+            movieTitle: resolvedMovie.title,
+            resolvedMovie,
+            time,
+            date,
+            price,
+            hallName: hall,
+            features,
+            isPremiere,
+            status: 'conflict',
+            conflictDetails: `Internal CSV file conflict with: ${conflictMsg}`
+          });
+        } else {
+          rows.push({
+            index: item.rowIndex,
+            movieTitle: resolvedMovie.title,
+            resolvedMovie,
+            time,
+            date,
+            price,
+            hallName: hall,
+            features,
+            isPremiere,
+            status: 'valid'
+          });
+        }
+      }
+    });
+
+    const total = rows.length;
+    const valid = rows.filter(r => r.status === 'valid').length;
+    const conflicts = rows.filter(r => r.status === 'conflict').length;
+    const errors = rows.filter(r => r.status === 'error').length;
+
+    setBulkValidationResults({
+      rows,
+      total,
+      validCount: valid,
+      conflictCount: conflicts,
+      errorCount: errors
+    });
+  };
+
+  // Run automatically on input text or movies changes
+  useEffect(() => {
+    validateBulkCsv(bulkCsvText);
+  }, [bulkCsvText, movies]);
+
+  // Execute bulk scheduling action
+  const handleDeployBulkSchedule = (policy: 'valid_only' | 'force_all') => {
+    if (!bulkValidationResults || !onScheduleScreeningsBulk) return;
+
+    const toDeploy = bulkValidationResults.rows.filter(row => {
+      if (row.status === 'error') return false;
+      if (policy === 'valid_only' && row.status === 'conflict') return false;
+      return true;
+    });
+
+    if (toDeploy.length === 0) {
+      alert("No valid showtimes found matching the selected deploy policy!");
+      return;
+    }
+
+    // Map clean format
+    const payload = toDeploy.map(row => ({
+      movieId: row.resolvedMovie.id,
+      time: row.time,
+      date: row.date,
+      ticketPrice: row.price,
+      hallName: row.hallName,
+      features: row.features,
+      isPremiere: row.isPremiere
+    }));
+
+    onScheduleScreeningsBulk(payload);
+
+    // Reset CSV panel state
+    setBulkCsvText('');
+    setBulkValidationResults(null);
+    alert(`Success: Deployed ${payload.length} showtimes!`);
+  };
+
+  // Seed CSV helper
+  const handleSeedCsvTemplate = () => {
+    const movieLabel1 = movies[0]?.title || 'Neon Echoes';
+    const movieLabel2 = movies[1]?.title || 'The Cosmic Lens';
+    const csvTemplate = `MovieTitle,Date,Time,Price,HallName,Features,IsPremiere\n"${movieLabel1}",Today,14:30,12.50,"IMAX Main Dome","Laser IMAX • Dolby Atmos",false\n"${movieLabel1}",Tomorrow,18:00,14.00,"IMAX Main Dome","Laser IMAX • Dolby Atmos",true\n"${movieLabel2}",Today,21:00,11.00,"Retro Screen B","35mm Projector Classic",false\n"${movieLabel1}",Tomorrow,20:30,15.00,"IMAX Main Dome","CONFLICT TEST ROW (will show overlap validation)",false`;
+    setBulkCsvText(csvTemplate);
+  };
+
+  // Drag and drop CSV handlers
+  const handleCsvDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingCsv(true);
+  };
+
+  const handleCsvDragLeave = () => {
+    setIsDraggingCsv(false);
+  };
+
+  const handleCsvDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingCsv(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      if (file.name.endsWith('.csv') || file.type === 'text/csv' || file.type === 'application/vnd.ms-excel') {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const text = event.target?.result;
+          if (typeof text === 'string') {
+            setBulkCsvText(text);
+          }
+        };
+        reader.readAsText(file);
+      } else {
+        alert("Please drop a valid .csv spreadsheet file!");
+      }
+    }
+  };
+
+  const handleCsvFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result;
+        if (typeof text === 'string') {
+          setBulkCsvText(text);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
   // Handle screening submission
   const handleCreateScreening = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMovieId) {
       alert("Please upload or select a movie to schedule screenings!");
       return;
+    }
+
+    // Check for overlap first
+    const selectedMovie = movies.find(m => m.id === selectedMovieId);
+    const selectedMovieDuration = parseRuntimeToMinutes(selectedMovie?.runtime || '2h 00m');
+    const parsedTime = parseInputTime(screenTime);
+
+    if (parsedTime) {
+      const proposedStart = parsedTime.hours * 60 + parsedTime.minutes;
+      const proposedEnd = proposedStart + selectedMovieDuration;
+
+      // Find any overlap on same day and same hall
+      let hasOverlap = false;
+      const conflictingScreeningNames: string[] = [];
+
+      movies.forEach((movie) => {
+        if (movie.screenings) {
+          movie.screenings.forEach((scr) => {
+            if (
+              scr.date.toLowerCase() === screenDate.toLowerCase() &&
+              scr.hallName.trim().toLowerCase() === (hallName || 'Dolby Premium Hall').trim().toLowerCase()
+            ) {
+              const startMins = parseTimeToMinutes(scr.time);
+              const durationMins = parseRuntimeToMinutes(movie.runtime || '2h 00m');
+              const endMins = startMins + durationMins;
+
+              const overlaps = proposedStart < endMins && proposedEnd > startMins;
+              if (overlaps) {
+                hasOverlap = true;
+                conflictingScreeningNames.push(`"${movie.title}" (${scr.time} - ${minutesToHHMM(endMins)})`);
+              }
+            }
+          });
+        }
+      });
+
+      if (hasOverlap) {
+        const confirmMsg = `⚠️ THEATER DOUBLE BOOKING DETECTED!\n\nYour proposed timeslot (${screenTime} - ${minutesToHHMM(proposedEnd)}) overlaps physically with existing reservation(s) in ${hallName || 'Dolby Premium Hall'} on ${screenDate}:\n\n${conflictingScreeningNames.map(name => `• ${name}`).join('\n')}\n\nAre you sure you want to proceed and deploy this showtime anyways?`;
+        const proceed = window.confirm(confirmMsg);
+        if (!proceed) {
+          return;
+        }
+      }
     }
 
     onScheduleScreening(selectedMovieId, {
@@ -742,13 +1357,17 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
     revenue: number;
     rating: number;
     hall: string;
+    isLiveNow?: boolean;
+    features?: string;
   }[] = [];
 
   // Seed default prefilled historic logs of screenings for real statistics data
   const defaultAnalyticsLogs = [
-    { id: 'an-1', movieTitle: 'NEON ECHOES', time: '19:00', date: 'Yesterday', price: 12.50, viewers: 420, revenue: 5250.00, rating: 4.8, hall: 'Grand Hall 1' },
-    { id: 'an-2', movieTitle: 'THE LAST REEL', time: '21:30', date: 'Yesterday', price: 14.00, viewers: 180, revenue: 2520.00, rating: 4.9, hall: 'The Red Room' },
-    { id: 'an-3', movieTitle: 'FROZEN PEAKS', time: '18:15', date: 'Days ago', price: 10.00, viewers: 360, revenue: 3600.00, rating: 4.7, hall: 'Grand Hall 1' },
+    { id: 'an-1', movieTitle: 'NEON ECHOES', time: '19:00', date: 'Yesterday', price: 12.50, viewers: 420, revenue: 5250.00, rating: 4.8, hall: 'Grand Hall 1', isLiveNow: false },
+    { id: 'an-2', movieTitle: 'THE LAST REEL', time: '21:30', date: 'Yesterday', price: 14.00, viewers: 180, revenue: 2520.00, rating: 4.9, hall: 'The Red Room', isLiveNow: false },
+    { id: 'an-3', movieTitle: 'FROZEN PEAKS', time: '18:15', date: 'Days ago', price: 10.00, viewers: 360, revenue: 3600.00, rating: 4.7, hall: 'Grand Hall 1', isLiveNow: false },
+    // A preloaded live demo room so the dashboard is immediately active with real-time updates!
+    { id: 'live-demo-1', movieTitle: 'COSMIC COMEDY (LIVE PREMIERE)', time: 'Now Screening', date: 'Today', price: 8.50, viewers: 148, revenue: 1258.00, rating: 4.9, hall: 'Nebula Lounge Suite', isLiveNow: true, features: 'IMAX 3D Laser • Spatial Sound' }
   ];
 
   // Add default logs to our collector
@@ -767,6 +1386,9 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
         runningRatingSum += ratingScore;
         runningRatingCount += 1;
 
+        // Any custom screening scheduled for "Today" is active/live now!
+        const isLiveNow = scr.date.toLowerCase() === 'today';
+
         allScreeningRows.unshift({
           id: scr.id,
           movieTitle: movie.title,
@@ -777,6 +1399,8 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
           revenue: rev,
           rating: Number(ratingScore.toFixed(2)),
           hall: scr.hallName,
+          isLiveNow: isLiveNow,
+          features: scr.features
         });
       });
     }
@@ -962,11 +1586,15 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
             </div>
           </div>
           <div className="space-y-1">
-            <p className="font-display text-3xl font-bold text-on-surface leading-snug">
-              {cumulativeViewers.toLocaleString()} Viewers
-            </p>
-            <p className="text-[10px] text-on-surface-variant font-sans uppercase tracking-wider font-bold">
-              across all scheduled cinema halls
+            <div className="flex items-baseline gap-1.5">
+              <p className="font-display text-3xl font-bold text-on-surface leading-snug">
+                {(cumulativeViewers + (Object.values(liveViewerFluctuations) as number[]).reduce((a: number, b: number) => a + b, 0)).toLocaleString()}
+              </p>
+              <span className="text-[10px] text-emerald-400 font-mono animate-pulse lowercase font-bold">live</span>
+            </div>
+            <p className="text-[9px] text-[#8e8581] font-sans uppercase tracking-wider font-extrabold flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+              <span>Real-time active guest synchronization</span>
             </p>
           </div>
         </div>
@@ -1301,6 +1929,76 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 />
               </div>
 
+              {/* Visual Atmosphere Selection */}
+              <div className="space-y-2 text-left bg-zinc-900 bg-opacity-40 p-4 rounded-2xl border border-white/5">
+                <label className="text-[9px] font-sans font-black tracking-widest text-[#dfd9d5] uppercase block flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3 text-[#dda75f]" />
+                  <span>Room Visual Atmosphere</span>
+                </label>
+                <p className="text-[9.5px] text-[#dac6a8]/70 lowercase leading-tight">
+                  choose the ambient background animations users experience when entering this film's synchronized watch lobby or movie lounge.
+                </p>
+                <div className="grid grid-cols-3 gap-2 pt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setVisualAtmosphere('neon-rain')}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-between gap-1.5 transition-all duration-200 cursor-pointer ${
+                      visualAtmosphere === 'neon-rain'
+                        ? 'bg-amber-500/15 border-amber-500/50 text-[#dda75f] shadow-md shadow-amber-500/5 scale-[1.02]'
+                        : 'bg-surface-container border-white/5 text-on-surface-variant hover:border-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center relative overflow-hidden shrink-0">
+                      <span className="absolute inset-0 bg-gradient-to-b from-blue-500/20 to-purple-500/20 animate-pulse" />
+                      <div className="absolute top-1 left-2 w-[1px] h-3 bg-cyan-400 opacity-60" />
+                      <div className="absolute top-2 left-4.5 w-[1px] h-2.5 bg-fuchsia-400 opacity-60" />
+                      <Sparkles className="h-3 w-3 text-emerald-400 z-10" />
+                    </div>
+                    <div className="text-center">
+                      <span className="font-sans font-black text-[8px] tracking-widest uppercase block">Neon Rain</span>
+                      <span className="font-mono text-[6.5px] text-on-surface-variant block mt-0.5 whitespace-nowrap">cyan pink drip</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVisualAtmosphere('retro-noise')}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-between gap-1.5 transition-all duration-200 cursor-pointer ${
+                      visualAtmosphere === 'retro-noise'
+                        ? 'bg-amber-500/15 border-amber-500/50 text-[#dda75f] shadow-md shadow-amber-500/5 scale-[1.02]'
+                        : 'bg-surface-container border-white/5 text-on-surface-variant hover:border-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-orange-500/10 flex items-center justify-center relative overflow-hidden shrink-0">
+                      <span className="absolute inset-0 bg-yellow-900/10" />
+                      <Sliders className="h-3 w-3 text-orange-400 z-10" />
+                    </div>
+                    <div className="text-center">
+                      <span className="font-sans font-black text-[8px] tracking-widest uppercase block">Retro Noise</span>
+                      <span className="font-mono text-[6.5px] text-on-surface-variant block mt-0.5 whitespace-nowrap">analog static</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVisualAtmosphere('quiet-projection')}
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-between gap-1.5 transition-all duration-200 cursor-pointer ${
+                      visualAtmosphere === 'quiet-projection'
+                        ? 'bg-amber-500/15 border-amber-500/50 text-[#dda75f] shadow-md shadow-amber-500/5 scale-[1.02]'
+                        : 'bg-surface-container border-white/5 text-on-surface-variant hover:border-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-blue-500/10 flex items-center justify-center relative overflow-hidden shrink-0">
+                      <Eye className="h-3 w-3 text-blue-400 z-10" />
+                    </div>
+                    <div className="text-center">
+                      <span className="font-sans font-black text-[8px] tracking-widest uppercase block">Projection</span>
+                      <span className="font-mono text-[6.5px] text-on-surface-variant block mt-0.5 whitespace-nowrap">lens glow bean</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               {/* Set as Premiere toggle */}
               <div className="p-4 bg-yellow-400/5 hover:bg-yellow-400/10 border border-yellow-400/25 rounded-2xl flex items-center justify-between transition-all select-none">
                 <div className="flex gap-2.5 items-center">
@@ -1463,16 +2161,120 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
             </form>
           ) : activeTab === 'schedule' ? (
             /* SCREENING SCHEDULER */
-            <form onSubmit={handleCreateScreening} className="space-y-4">
-              <div className="space-y-1">
+            <div className="space-y-4">
+              <div className="space-y-1 text-left">
                 <h3 className="font-display font-extrabold text-[#ede6e3] text-lg uppercase tracking-wide flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-primary" />
                   <span>Theatrical Session Planner</span>
                 </h3>
-                <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed">Select any uploaded film in the library and configure its synced screening showtime, lounge attributes, and ticket price.</p>
+                <p className="font-sans text-[11px] text-on-surface-variant leading-relaxed">
+                  Select any film in the library and configure its synced physical screening showtime, or run distributor-grade bulk scheduling operations.
+                </p>
               </div>
 
-              <div className="space-y-1.5 pt-2">
+              {/* Toggle Selector Segment */}
+              <div id="scheduling-mode-switch" className="grid grid-cols-2 p-1 bg-[#121214] bg-opacity-70 border border-white/5 rounded-xl select-none">
+                <button
+                  type="button"
+                  onClick={() => setScheduleMode('single')}
+                  className={`py-2 text-[10px] font-sans font-black tracking-widest uppercase rounded-lg transition-all cursor-pointer ${
+                    scheduleMode === 'single'
+                      ? 'bg-primary text-[#0c0c0e] shadow-lg shadow-primary/10'
+                      : 'text-zinc-400 hover:text-[#ede6e3]'
+                  }`}
+                >
+                  Single Showtime
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleMode('bulk')}
+                  className={`py-2 text-[10px] font-sans font-black tracking-widest uppercase rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    scheduleMode === 'bulk'
+                      ? 'bg-primary text-[#0c0c0e] shadow-lg shadow-primary/10'
+                      : 'text-zinc-400 hover:text-[#ede6e3]'
+                  }`}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  Bulk CSV Import
+                </button>
+              </div>
+
+              {scheduleMode === 'single' ? (
+                <form onSubmit={handleCreateScreening} className="space-y-4">
+
+              {/* Template Selection Module */}
+              <div id="screening-template-module" className="bg-zinc-900 bg-opacity-40 border border-white/5 rounded-2xl p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <Bookmark className="h-4.5 w-4.5 text-primary" />
+                    <span className="font-sans font-black text-[10px] tracking-wider text-[#ede6e3] uppercase">
+                      Screening Template Library
+                    </span>
+                  </div>
+                  {saveSuccessMessage && (
+                    <span className="font-mono text-[8.5px] text-[#dda75f] bg-amber-500/10 px-2.5 py-0.5 rounded-lg animate-pulse lowercase">
+                      {saveSuccessMessage}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Template list */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {templates.map((tpl) => (
+                    <div 
+                      key={tpl.id}
+                      onClick={() => handleLoadTemplate(tpl)}
+                      className="group relative p-2.5 bg-[#18181b]/60 border border-white/5 hover:border-amber-500/40 hover:bg-amber-500/5 rounded-xl flex items-center justify-between gap-2 transition-all duration-200 cursor-pointer select-none text-left"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-sans font-black text-[9px] text-[#ede6e3] truncate tracking-tight uppercase group-hover:text-[#dda75f]">
+                          {tpl.name}
+                        </p>
+                        <p className="font-mono text-[7px] text-zinc-400 leading-none mt-1 truncate uppercase">
+                          {tpl.screenTime} @ {tpl.screenDate} • ${tpl.ticketPrice.toFixed(2)}
+                        </p>
+                        <p className="font-mono text-[6px] text-zinc-500 leading-none mt-0.5 truncate lowercase">
+                          {tpl.hallName}
+                        </p>
+                      </div>
+                      
+                      {!tpl.isPreset && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteTemplate(tpl.id, e)}
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 text-zinc-500 transition-all cursor-pointer inline-flex items-center justify-center rounded-lg bg-black/40 hover:bg-black"
+                          title="Delete template"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Save current settings as template footer input */}
+                <div className="pt-3 border-t border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="e.g., Midnight Premiere, Matinee Special"
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      className="w-full bg-zinc-950/70 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-[#dfd9d5] placeholder-zinc-500 focus:outline-none focus:border-primary-container leading-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveTemplate}
+                    className="px-3.5 py-2 bg-primary hover:bg-primary-hover text-[#0c0c0e] font-sans text-[8.5px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-primary/10 active:scale-95 shrink-0"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span>Save Current as Template</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
                 <label className="text-[9px] font-sans font-black tracking-widest text-[#ece2dd] uppercase block">Select Target Film</label>
                 <select
                   required
@@ -1581,6 +2383,191 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 </button>
               </div>
 
+              {/* LIVE OCCUPANCY TIMELINE & OVERLAP WARNING INDICATOR */}
+              {(() => {
+                const selectedMovie = movies.find(m => m.id === selectedMovieId);
+                const selectedMovieTitle = selectedMovie ? selectedMovie.title : 'Proposed Film';
+                const selectedMovieDuration = parseRuntimeToMinutes(selectedMovie?.runtime || '2h 00m');
+                const parsedTime = parseInputTime(screenTime);
+
+                const activeScreenings: {
+                  id: string;
+                  movieTitle: string;
+                  time: string;
+                  startMins: number;
+                  durationMins: number;
+                  endMins: number;
+                  hallName: string;
+                }[] = [];
+
+                movies.forEach((movie) => {
+                  if (movie.screenings) {
+                    movie.screenings.forEach((scr) => {
+                      if (
+                        scr.date.toLowerCase() === screenDate.toLowerCase() &&
+                        scr.hallName.trim().toLowerCase() === (hallName || 'Dolby Premium Hall').trim().toLowerCase()
+                      ) {
+                        const startMins = parseTimeToMinutes(scr.time);
+                        const durationMins = parseRuntimeToMinutes(movie.runtime || '2h 00m');
+                        const endMins = startMins + durationMins;
+                        activeScreenings.push({
+                          id: scr.id,
+                          movieTitle: movie.title,
+                          time: scr.time,
+                          startMins,
+                          durationMins,
+                          endMins,
+                          hallName: scr.hallName
+                        });
+                      }
+                    });
+                  }
+                });
+
+                let proposedStartMinutes = 0;
+                let proposedEndMinutes = 0;
+                let isProposedTimeValid = false;
+                let hasOverlap = false;
+                const conflicts: typeof activeScreenings = [];
+
+                if (parsedTime) {
+                  proposedStartMinutes = parsedTime.hours * 60 + parsedTime.minutes;
+                  proposedEndMinutes = proposedStartMinutes + selectedMovieDuration;
+                  isProposedTimeValid = true;
+
+                  activeScreenings.forEach((scr) => {
+                    const overlap = proposedStartMinutes < scr.endMins && proposedEndMinutes > scr.startMins;
+                    if (overlap) {
+                      hasOverlap = true;
+                      conflicts.push(scr);
+                    }
+                  });
+                }
+
+                return (
+                  <div className="p-4.5 bg-zinc-950/45 border border-white/5 rounded-2xl col-span-1 md:col-span-1 space-y-4 text-left">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h5 className="font-sans font-black text-[10px] tracking-wider text-on-surface uppercase flex items-center gap-2">
+                          <span className={`h-2 w-2 rounded-full ${hasOverlap ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+                          <span>Theater Occupancy Live Track</span>
+                        </h5>
+                        <p className="font-sans text-[9px] text-[#8e8581] lowercase mt-0.5 leading-relaxed">
+                          schedule overview for <span className="text-white font-mono font-bold uppercase">{hallName || 'Dolby Premium Hall'}</span> on <span className="text-white font-mono font-bold capitalize">{screenDate}</span>.
+                        </p>
+                      </div>
+                      {activeScreenings.length > 0 && (
+                        <span className="px-2 py-0.5 rounded bg-zinc-900 border border-white/10 text-[8px] font-mono text-yellow-400 font-bold uppercase tracking-widest self-start sm:self-auto shrink-0">
+                          {activeScreenings.length} booking{activeScreenings.length > 1 ? 's' : ''} active
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 24-Hour Timeline Bar */}
+                    <div className="space-y-1.5">
+                      <div className="relative w-full h-12 bg-zinc-950/90 border border-white/10 rounded-xl overflow-hidden font-mono flex items-center select-none shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]">
+                        {/* Hour Vertical Ticks */}
+                        {[2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22].map((hour) => {
+                          const pct = (hour * 60 / 1440) * 100;
+                          return (
+                            <div 
+                              key={hour} 
+                              className="absolute top-0 bottom-0 border-l border-white/5 pointer-events-none select-none flex flex-col justify-between"
+                              style={{ left: `${pct}%` }}
+                            >
+                              <span className="text-[7px] text-zinc-600/70 pl-0.5 pt-0.5 leading-none">{hour.toString().padStart(2, '0')}</span>
+                            </div>
+                          );
+                        })}
+
+                        {/* Existing Reserved Slots */}
+                        {activeScreenings.map((scr, idx) => {
+                          const leftPct = (scr.startMins / 1440) * 100;
+                          const widthPct = (Math.min(scr.durationMins, 1440 - scr.startMins) / 1440) * 100;
+                          return (
+                            <div
+                              key={scr.id || idx}
+                              className="absolute top-1 bottom-1 bg-zinc-900 border border-white/10 hover:border-white/30 text-[9px] text-[#ede6e3] rounded-lg px-2 flex flex-col justify-center overflow-hidden leading-tight transition-all"
+                              style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                              title={`${scr.movieTitle} (${scr.time} - ${minutesToHHMM(scr.endMins)})`}
+                            >
+                              <span className="font-bold truncate text-[8.5px] text-zinc-300 leading-tight block">{scr.movieTitle}</span>
+                              <span className="text-[7px] text-zinc-500 font-mono leading-none mt-0.5 block">{scr.time} - {minutesToHHMM(scr.endMins)}</span>
+                            </div>
+                          );
+                        })}
+
+                        {/* Proposed Slot Indicator */}
+                        {isProposedTimeValid && (
+                          <div
+                            className={`absolute top-1.5 bottom-1.5 rounded-lg px-2.5 flex flex-col justify-center overflow-hidden leading-tight border transition-all z-10 ${
+                              hasOverlap 
+                                ? 'bg-red-500/20 border-red-500 text-red-200 animate-pulse ring-2 ring-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.25)]' 
+                                : 'bg-amber-500/20 border-amber-500 text-[#fde2af] shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                            }`}
+                            style={{ 
+                              left: `${(proposedStartMinutes / 1440) * 100}%`, 
+                              width: `${(Math.min(selectedMovieDuration, 1440 - proposedStartMinutes) / 1440) * 100}%` 
+                            }}
+                            title={`Proposed: ${selectedMovieTitle} (${screenTime} - ${minutesToHHMM(proposedEndMinutes)})`}
+                          >
+                            <span className="font-black text-[8px] truncate tracking-tight uppercase block">PROPOSED: {selectedMovieTitle}</span>
+                            <span className="text-[7px] font-mono leading-none opacity-90 mt-0.5 block">{screenTime} - {minutesToHHMM(proposedEndMinutes)}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Base Hour Labels (Start / Mid / End) */}
+                      <div className="flex justify-between items-center text-[7.5px] font-mono text-zinc-500 px-0.5 uppercase tracking-wider select-none font-bold">
+                        <span>00:00 (MIDNIGHT)</span>
+                        <span>12:00 (NOON)</span>
+                        <span>24:00 (CLOSED)</span>
+                      </div>
+                    </div>
+
+                    {/* Real-time Status Notice */}
+                    {hasOverlap ? (
+                      <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-2xl flex gap-3 text-red-400 text-xs">
+                        <AlertCircle className="h-4.5 w-4.5 shrink-0 mt-0.5 text-red-400" />
+                        <div className="space-y-1.5 leading-normal">
+                          <h6 className="font-sans font-black text-[9.5px] tracking-wider uppercase text-red-400 leading-none">CONFLICT: TIME OVERLAP DETECTED</h6>
+                          <p className="font-sans text-[10px] text-zinc-400 leading-relaxed">
+                            Your proposed showtime ({screenTime} - {minutesToHHMM(proposedEndMinutes)}) double-books this theater hall. Overlapping slots:
+                          </p>
+                          <ul className="list-disc pl-4 space-y-1 text-[9.5px] text-zinc-400 font-mono">
+                            {conflicts.map((c, i) => (
+                              <li key={i}>
+                                <span className="text-white font-sans font-bold">{c.movieTitle}</span> ({c.time} - {minutesToHHMM(c.endMins)})
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    ) : isProposedTimeValid ? (
+                      <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl flex gap-3 text-emerald-400 text-xs">
+                        <ShieldCheck className="h-4.5 w-4.5 shrink-0 mt-0.5 text-emerald-400" />
+                        <div className="space-y-0.5 leading-normal">
+                          <h6 className="font-sans font-black text-[9.5px] tracking-wider uppercase text-emerald-400 leading-none">SHOWTIME SLOT CLEARED</h6>
+                          <p className="font-sans text-[10px] text-zinc-400 lowercase leading-relaxed">
+                            {hallName || 'Dolby Premium Hall'} is vacant on {screenDate} between {screenTime} and {minutesToHHMM(proposedEndMinutes)}.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 bg-zinc-900/55 border border-white/5 rounded-2xl flex gap-3 text-zinc-500 text-xs">
+                        <AlertCircle className="h-4.5 w-4.5 shrink-0 mt-0.5 text-zinc-500" />
+                        <div className="space-y-0.5 leading-normal">
+                          <h6 className="font-sans font-black text-[9.5px] tracking-wider uppercase text-zinc-500 leading-none">AWAITING SHOWTIME PARAMETERS</h6>
+                          <p className="font-sans text-[10px] text-zinc-400 lowercase leading-relaxed">
+                            Enter a valid 24-hour showtime (e.g., <span className="font-mono text-[#dda75f]">19:30</span>) to preview active theater occupancy gaps.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex gap-3 text-on-surface-variant text-[10px] leading-relaxed col-span-1 md:col-span-1">
                 <AlertCircle className="h-4.5 w-4.5 text-secondary shrink-0" />
                 <span>Scheduling screening showtimes automatically injects customized ticket reservations for general audience members to buy, complete with dynamic synchronized screening room links.</span>
@@ -1594,7 +2581,212 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 <span>Deploy Theater Showtime</span>
               </button>
             </form>
-          ) : activeTab === 'editor' ? (
+          ) : (
+            /* BULK CSV IMPORT PANEL */
+            <div id="bulk-csv-scheduling-portal" className="space-y-4">
+              <div className="space-y-1 text-left">
+                <h4 className="font-sans font-black text-[10px] tracking-wider text-primary uppercase">
+                  Step 1: Upload or Paste CSV Dataset
+                </h4>
+                <p className="font-sans text-[10.5px] text-zinc-400 leading-relaxed">
+                  Provide a comma-separated list of movie showtime entries. Every entry must align with standard spreadsheet column headers.
+                </p>
+              </div>
+
+              {/* Drag & Drop File Zone */}
+              <div 
+                onDragOver={handleCsvDragOver}
+                onDragLeave={handleCsvDragLeave}
+                onDrop={handleCsvDrop}
+                className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 select-none ${
+                  isDraggingCsv 
+                    ? 'border-primary bg-primary/10 scale-[1.01]' 
+                    : 'border-white/10 hover:border-primary/40 bg-zinc-950/30'
+                }`}
+                onClick={() => document.getElementById('csv-file-picker')?.click()}
+              >
+                <FileSpreadsheet className={`h-8 w-8 ${isDraggingCsv ? 'text-primary' : 'text-zinc-500'}`} />
+                <div className="space-y-0.5">
+                  <p className="font-sans font-bold text-[11px] text-[#ede6e3]">
+                    Drag & Drop showtimes.csv here
+                  </p>
+                  <p className="font-mono text-[9px] text-zinc-500 uppercase">
+                    or click to browse local folders
+                  </p>
+                </div>
+                <input 
+                  id="csv-file-picker"
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleCsvFileSelect}
+                  className="hidden" 
+                />
+              </div>
+
+              {/* Manual Text pasting workspace */}
+              <div className="space-y-1.5 text-left">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] font-sans font-black tracking-widest text-[#ece2dd] uppercase block">
+                    Or Paste CSV Logs
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSeedCsvTemplate}
+                    className="font-sans text-[8.5px] text-[#dda75f] bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/20 font-black tracking-wider uppercase transition-all cursor-pointer"
+                    title="Load exemplary data structures to evaluate scheduler validation in real time"
+                  >
+                    📝 Load Sample CSV
+                  </button>
+                </div>
+                <textarea
+                  rows={5}
+                  value={bulkCsvText}
+                  onChange={(e) => setBulkCsvText(e.target.value)}
+                  placeholder={`MovieTitle,Date,Time,Price,HallName,Features,IsPremiere\n"Neon Echoes",Today,14:30,12.50,"IMAX Main Dome","Laser IMAX • Spatial Audio",false\n"The Cosmic Lens",Tomorrow,19:15,14.50,"Dolby Deluxe","Luxury Recliners",true`}
+                  className="w-full bg-zinc-950/70 border border-white/10 rounded-xl p-3 text-xs font-mono text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-primary leading-relaxed"
+                />
+              </div>
+
+              {/* LIVE VALIDATION SANDBOX OUTPUT */}
+              {bulkValidationResults && (
+                <div className="space-y-3 bg-[#111]/60 border border-white/5 rounded-2xl p-4">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2 border-dashed">
+                    <h5 className="font-sans font-black text-[10px] tracking-wider text-[#ede6e3] uppercase flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                      <span>Real-time CSV Analyzer</span>
+                    </h5>
+                    <span className="font-mono text-[8px] text-zinc-500 font-bold uppercase col-span-1">
+                      {bulkValidationResults.total} entries found
+                    </span>
+                  </div>
+
+                  {/* Validation Stats summary pill grid */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-emerald-500/5 border border-emerald-500/20 p-2 rounded-xl text-center space-y-0.5">
+                      <p className="font-mono text-[11px] font-black text-emerald-400 leading-none">
+                        {bulkValidationResults.validCount}
+                      </p>
+                      <p className="font-sans text-[7.5px] text-zinc-500 font-bold uppercase leading-none mt-1">
+                        Valid & Ready
+                      </p>
+                    </div>
+                    <div className="bg-amber-500/5 border border-amber-500/20 p-1.5 rounded-xl text-center space-y-0.5">
+                      <p className="font-mono text-[11px] font-black text-amber-500 leading-none">
+                        {bulkValidationResults.conflictCount}
+                      </p>
+                      <p className="font-sans text-[6.5px] text-zinc-500 font-bold uppercase leading-none mt-1">
+                        Overlaps Detected
+                      </p>
+                    </div>
+                    <div className="bg-red-500/5 border border-red-500/20 p-2 rounded-xl text-center space-y-0.5">
+                      <p className="font-mono text-[11px] font-black text-red-400 leading-none">
+                        {bulkValidationResults.errorCount}
+                      </p>
+                      <p className="font-sans text-[7.5px] text-zinc-500 font-bold uppercase leading-none mt-1">
+                        Error Rows
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Rows Diagnostics list */}
+                  <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 text-left scrollbar-thin">
+                    {bulkValidationResults.rows.map((row, idx) => (
+                      <div 
+                        key={idx}
+                        className={`p-2 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 border text-[10px] leading-relaxed transition-all ${
+                          row.status === 'valid'
+                            ? 'bg-emerald-500/5 border-emerald-500/10 text-[#ede6e3]'
+                            : row.status === 'conflict'
+                            ? 'bg-amber-500/5 border-amber-500/20 text-yellow-300'
+                            : 'bg-red-500/5 border-red-500/20 text-red-400'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[8px] font-bold text-zinc-500">
+                              #{row.index}
+                            </span>
+                            <span className="font-sans font-black tracking-tight truncate uppercase text-[#ece2dd]">
+                              {row.movieTitle}
+                            </span>
+                          </div>
+                          <p className="font-mono text-[8px] text-zinc-400 uppercase leading-none">
+                            {row.date} • {row.time || 'no slot'} • ${row.price.toFixed(2)} • {row.hallName}
+                          </p>
+                          {row.status === 'conflict' && (
+                            <p className="font-sans text-[8.5px] text-yellow-400/80 leading-tight italic mt-0.5 text-left">
+                              ⚠️ {row.conflictDetails}
+                            </p>
+                          )}
+                          {row.status === 'error' && (
+                            <p className="font-sans text-[8.5px] text-red-400/80 leading-tight italic mt-0.5 text-left">
+                              ❌ {row.errorMessage}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="shrink-0 flex items-center">
+                          {row.status === 'valid' ? (
+                            <span className="bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded text-[8.5px] font-black tracking-wider uppercase">
+                              PASS
+                            </span>
+                          ) : row.status === 'conflict' ? (
+                            <span className="bg-amber-500/15 text-amber-400 px-2 py-0.5 rounded text-[8.5px] font-black tracking-wider uppercase">
+                              OVERLAP
+                            </span>
+                          ) : (
+                            <span className="bg-red-500/15 text-red-400 px-2 py-0.5 rounded text-[8.5px] font-black tracking-wider uppercase">
+                              BLOCK
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Operational Policy Action Buttons */}
+                  <div className="flex flex-col gap-2 pt-2 border-t border-white/5">
+                    <button
+                      type="button"
+                      disabled={bulkValidationResults.validCount === 0}
+                      onClick={() => handleDeployBulkSchedule('valid_only')}
+                      className={`w-full py-2.5 rounded-xl text-black font-sans text-[10px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 ${
+                        bulkValidationResults.validCount > 0
+                          ? 'bg-emerald-400 hover:bg-emerald-500 cursor-pointer hover:scale-[1.01]'
+                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Deploy Clean Showtimes Only ({bulkValidationResults.validCount})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={(bulkValidationResults.validCount + bulkValidationResults.conflictCount) === 0}
+                      onClick={() => handleDeployBulkSchedule('force_all')}
+                      className={`w-full py-2.5 rounded-xl text-black font-sans text-[10px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 ${
+                        (bulkValidationResults.validCount + bulkValidationResults.conflictCount) > 0
+                          ? 'bg-[#dda75f] hover:bg-[#c9954d] cursor-pointer hover:scale-[1.01]'
+                          : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      <span>Force All (Overrides {bulkValidationResults.conflictCount} Overlaps)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex gap-2.5 text-on-surface-variant text-[9.5px] leading-relaxed text-left">
+                <AlertCircle className="h-4.5 w-4.5 text-secondary shrink-0" />
+                <span>
+                  Bulk showtimes undergo physical collision validation. Valid slots execute automatically, and conflicted slots can be forced into place using the override options.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'editor' ? (
             /* STUDIO EDITOR */
             <div className="space-y-4">
               <div className="space-y-1">
@@ -1902,6 +3094,125 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
         {/* Right Active Analytics & Scheduled Screenings list segment (7 cols) */}
         <div className="lg:col-span-12 xl:col-span-7 space-y-6">
           
+          {/* Live Screening Room Monitor Panel */}
+          {(() => {
+            const liveRooms = allScreeningRows.filter(r => r.isLiveNow);
+            return (
+              <div id="live-screening-monitor" className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-48 h-48 bg-red-500/5 blur-3xl rounded-full pointer-events-none" />
+                
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                      </span>
+                      <h4 className="font-display font-extrabold text-[#eed9cb] text-md uppercase tracking-wider">
+                        LIVE NOW: SCREENING ROOM MONITOR
+                      </h4>
+                    </div>
+                    <p className="font-sans text-[10px] text-on-surface-variant lowercase">
+                      real-time audience telemetry, device synchronization streams, and live chat monitoring dashboards.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-[8.5px] font-mono text-zinc-500 bg-black/30 border border-white/5 px-2.5 py-1 rounded-lg uppercase tracking-wider self-start sm:self-auto shrink-0 select-none">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Telemetry Status: active ({lastActivityTime})</span>
+                  </div>
+                </div>
+
+                {liveRooms.length === 0 ? (
+                  <div className="p-8 bg-black/20 border border-dashed border-white/5 rounded-2xl text-center text-zinc-500 space-y-2">
+                    <Video className="h-8 w-8 text-zinc-600 mx-auto animate-pulse" />
+                    <p className="font-sans text-xs lowercase text-zinc-400">no active virtual screens currently hosting guests.</p>
+                    <p className="font-sans text-[10px] text-zinc-600 max-w-sm mx-auto lowercase leading-relaxed">
+                      schedule a slot in the screenings tab with the option set to "Today" to trigger a synchronized room node.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {liveRooms.map((room) => {
+                      const currentVal = room.viewers + (liveViewerFluctuations[room.id] || 0);
+                      // Calculate mock cinema progress based on current system minute
+                      const minuteOfHour = new Date().getMinutes();
+                      const runLength = 102; // simulated runtime in mins
+                      const progressMins = (minuteOfHour * 1.7) % runLength;
+                      const progressPct = (progressMins / runLength) * 100;
+
+                      return (
+                        <div 
+                          key={room.id} 
+                          className="bg-black/35 border border-[#451a1a]/30 hover:border-red-500/30 rounded-2xl p-4.5 space-y-4 hover:bg-red-500/5 transition-all duration-300 relative group flex flex-col justify-between"
+                        >
+                          <div className="space-y-1 text-left">
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="font-sans text-[8px] font-black tracking-widest text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/25 uppercase shrink-0 select-none">
+                                ACTIVE ROOM
+                              </span>
+                              <span className="font-mono text-[8px] text-zinc-500 uppercase tracking-widest truncate max-w-[130px]" title={room.hall}>
+                                {room.hall}
+                              </span>
+                            </div>
+                            
+                            <h5 className="font-display font-bold text-xs text-[#ede6e3] group-hover:text-red-400 transition-colors uppercase truncate pt-1">
+                              {room.movieTitle}
+                            </h5>
+                            
+                            <p className="font-mono text-[7.5px] text-zinc-400 leading-none uppercase truncate">
+                              {room.features || 'Standard Laser Projection • Spatial Sound'}
+                            </p>
+                          </div>
+
+                          {/* Telemetry metrics bar */}
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-[8px] font-mono text-zinc-500 select-none uppercase">
+                              <span>PLAYBACK FRAME SYNC</span>
+                              <span className="text-zinc-400">{Math.floor(progressMins)}m / {runLength}m ({Math.floor(progressPct)}%)</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden relative shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]">
+                              <div 
+                                className="h-full bg-gradient-to-r from-red-600 to-amber-500 rounded-full transition-all duration-1000 animate-pulse"
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Dynamic client state telemetry */}
+                          <div className="flex justify-between items-center pt-2.5 border-t border-white/5 font-sans">
+                            <div className="text-left">
+                              <span className="text-[8px] font-black tracking-widest text-zinc-500 uppercase block select-none">
+                                GUESTS ONLINE
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-sm font-black text-white pr-1">
+                                  {currentVal}
+                                </span>
+                                <div className="flex items-center gap-0.5 text-[#34d399] font-mono text-[8px] font-extrabold px-1 rounded bg-emerald-500/10">
+                                  <span>▲</span>
+                                  <span>LIVE</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Simulated user dots */}
+                            <div className="flex -space-x-1.5 overflow-hidden shrink-0">
+                              <div className="h-5 w-5 rounded-full border border-zinc-950 bg-gradient-to-tr from-[#9a3412] to-[#ea580c] text-[8px] font-black flex items-center justify-center text-white scale-95 uppercase select-none">A</div>
+                              <div className="h-5 w-5 rounded-full border border-zinc-950 bg-gradient-to-tr from-[#166534] to-[#15803d] text-[8px] font-black flex items-center justify-center text-white scale-95 uppercase select-none">B</div>
+                              <div className="h-5 w-5 rounded-full border border-zinc-950 bg-gradient-to-tr from-[#1e40af] to-[#2563eb] text-[8px] font-black flex items-center justify-center text-white scale-95 uppercase select-none">M</div>
+                              <div className="h-5 w-5 rounded-full border border-zinc-950 bg-zinc-800 text-[6.5px] font-black flex items-center justify-center text-zinc-400 select-none">+{Math.max(0, currentVal - 3)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Active / Past screenings log */}
           <div className="bg-surface-container-low border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl overflow-hidden">
             <div className="flex justify-between items-center">
@@ -1951,8 +3262,15 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                 <tbody className="divide-y divide-white/5">
                   {allScreeningRows.map((row) => (
                     <tr key={row.id} className="hover:bg-white/5 transition-colors group">
-                      <td className="py-4 px-2 font-display font-bold text-on-surface tracking-wide max-w-[155px] truncate group-hover:text-primary transition-colors">
-                        {row.movieTitle}
+                      <td className="py-4 px-2 font-display font-bold text-on-surface tracking-wide max-w-[200px] truncate group-hover:text-primary transition-colors">
+                        <div className="flex items-center gap-2">
+                          {row.isLiveNow && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/30 text-[7px] text-red-400 font-sans font-black tracking-widest uppercase animate-pulse select-none">
+                              LIVE
+                            </span>
+                          )}
+                          <span className="truncate">{row.movieTitle}</span>
+                        </div>
                       </td>
                       <td className="py-4 px-2 font-mono">
                         <span className="text-on-surface-variant uppercase text-[10px]">{row.date} </span>
@@ -1961,11 +3279,19 @@ export default function StudioView({ movies, onUploadFilmMovie, onScheduleScreen
                       <td className="py-4 px-2 text-right font-mono font-bold text-on-surface-variant">
                         ${row.price.toFixed(2)}
                       </td>
-                      <td className="py-4 px-2 text-right font-mono font-bold text-primary">
-                        {row.viewers}
+                      <td className="py-4 px-2 text-right text-primary font-mono font-bold">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {row.isLiveNow && (
+                            <span className="flex h-1.5 w-1.5 relative shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                            </span>
+                          )}
+                          <span className="font-bold text-white">{(row.viewers + (liveViewerFluctuations[row.id] || 0)).toLocaleString()}</span>
+                        </div>
                       </td>
                       <td className="py-4 px-2 text-right font-mono font-extrabold text-green-400">
-                        ${row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${(row.revenue + (row.isLiveNow ? (liveViewerFluctuations[row.id] || 0) * row.price : 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="py-4 px-2 text-center select-none font-mono">
                         <div className="inline-flex items-center gap-1 bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 rounded text-yellow-400 font-extrabold text-[10px]">

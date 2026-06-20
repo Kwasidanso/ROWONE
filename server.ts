@@ -1204,7 +1204,7 @@ app.get("/api/content/by-slug/:contentType/:slug", async (req: any, res: any) =>
 
 // 2. Endpoint: Upload a new Movie or Reel, generate unique URL and QR
 app.post("/api/content/upload", async (req: any, res: any) => {
-  const { title, contentType, creatorId, originalVideoUrl, synopsis, genre, rating, runtime, format, imageUrl, heroImageUrl } = req.body;
+  const { title, contentType, creatorId, originalVideoUrl, synopsis, genre, rating, runtime, format, imageUrl, heroImageUrl, visualAtmosphere } = req.body;
 
   if (!title) {
     return res.status(400).json({ error: "Missing required content title value" });
@@ -1270,7 +1270,8 @@ app.post("/api/content/upload", async (req: any, res: any) => {
     startsIn: "Tomorrow",
     cast: [],
     capacity: 100,
-    isUserUploaded: true
+    isUserUploaded: true,
+    visualAtmosphere: visualAtmosphere || "neon-rain"
   };
 
   // Add to local server-side cache

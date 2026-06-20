@@ -51,6 +51,7 @@ export interface Movie {
   uploadedFileName?: string;
   isUserUploaded?: boolean;
   screenings?: StudioScreening[];
+  visualAtmosphere?: 'neon-rain' | 'retro-noise' | 'quiet-projection' | string;
 
   // Share system & Ledger metadata properties
   slug?: string;

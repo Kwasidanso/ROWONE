@@ -51,6 +51,7 @@ export const INITIAL_MOVIES: Movie[] = [
     isNewRelease: true,
     cast: [CAST_JULIAN_THORNE, CAST_ELENA_VANCE, CAST_MARCUS_REED, CAST_SARAH_LIN],
     capacity: 78,
+    visualAtmosphere: 'neon-rain',
   },
   {
     id: 'm2',
@@ -66,6 +67,7 @@ export const INITIAL_MOVIES: Movie[] = [
     startsIn: '45m',
     cast: [CAST_JULIAN_THORNE, CAST_MARCUS_REED],
     capacity: 45,
+    visualAtmosphere: 'retro-noise',
   },
   {
     id: 'm3',
@@ -82,6 +84,7 @@ export const INITIAL_MOVIES: Movie[] = [
     tag: 'LIMITED',
     cast: [CAST_ELENA_VANCE, CAST_SARAH_LIN],
     capacity: 52,
+    visualAtmosphere: 'quiet-projection',
   },
   {
     id: 'm4',
@@ -97,6 +100,7 @@ export const INITIAL_MOVIES: Movie[] = [
     startsIn: '5m',
     cast: [CAST_JULIAN_THORNE, CAST_ELENA_VANCE, CAST_SARAH_LIN],
     capacity: 90,
+    visualAtmosphere: 'retro-noise',
   },
   {
     id: 'm5',

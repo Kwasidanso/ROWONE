@@ -19,6 +19,7 @@ import EditProfileModal from './components/EditProfileModal';
 import TicketModal from './components/TicketModal';
 import SeatSelectionModal from './components/SeatSelectionModal';
 import SettingsView from './components/SettingsView';
+import SubscriptionView from './components/SubscriptionView';
 import UpgradeModal from './components/UpgradeModal';
 import SupportPanel from './components/SupportPanel';
 import PrivacyModal from './components/PrivacyModal';
@@ -43,6 +44,7 @@ export default function App() {
   const [currentTab, setCurrentTabState] = useState<string>(() => {
     try {
       const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
+      if (path.includes('subscription/rowonepass') || path.startsWith('subscription/rowonepass')) return 'rowonepass';
       if (path.startsWith('settings')) return 'settings';
       if (path.startsWith('studio')) return 'studio';
       if (path.startsWith('discover')) return 'discover';
@@ -58,7 +60,9 @@ export default function App() {
   const setCurrentTab = (tab: string) => {
     try {
       let targetPath = `/${tab.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-      if (tab === 'settings') {
+      if (tab === 'rowonepass') {
+        targetPath = '/subscription/rowonepass';
+      } else if (tab === 'settings') {
         const currentPath = window.location.pathname.toLowerCase();
         if (currentPath.includes('/billing')) {
           targetPath = '/settings/billing';
@@ -234,7 +238,9 @@ export default function App() {
       if (!onBootIsMovie) {
         // Default: set tab based on URL path
         const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
-        if (path.startsWith('settings')) {
+        if (path.includes('subscription/rowonepass') || path.startsWith('subscription/rowonepass')) {
+          setCurrentTabState('rowonepass');
+        } else if (path.startsWith('settings')) {
           setCurrentTabState('settings');
         } else if (path.startsWith('studio')) {
           setCurrentTabState('studio');
@@ -261,7 +267,9 @@ export default function App() {
           resetSeoTags();
 
           const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
-          if (path.startsWith('settings')) {
+          if (path.includes('subscription/rowonepass') || path.startsWith('subscription/rowonepass')) {
+            setCurrentTabState('rowonepass');
+          } else if (path.startsWith('settings')) {
             setCurrentTabState('settings');
           } else if (path.startsWith('studio')) {
             setCurrentTabState('studio');
@@ -1719,7 +1727,11 @@ export default function App() {
     setSelectedMovieId(null);
     try {
       const url = new URL(window.location.href);
-      url.pathname = `/${currentTab === 'home' ? '' : currentTab.toLowerCase()}`;
+      if (currentTab === 'rowonepass') {
+        url.pathname = '/subscription/rowonepass';
+      } else {
+        url.pathname = `/${currentTab === 'home' ? '' : currentTab.toLowerCase()}`;
+      }
       window.history.pushState({}, '', url.pathname + url.search);
       resetSeoTags();
     } catch (e) {
@@ -2014,6 +2026,60 @@ export default function App() {
         countdownMinutes: 15,
       });
     }
+  };
+
+  const handleScheduleScreeningsBulk = (
+    bulkList: {
+      movieId: string;
+      time: string;
+      date: string;
+      ticketPrice: number;
+      hallName: string;
+      features: string;
+      isPremiere?: boolean;
+    }[]
+  ) => {
+    setMovies((prev) => {
+      return prev.map((m) => {
+        const itemsToAdd = bulkList.filter((item) => item.movieId === m.id);
+        if (itemsToAdd.length === 0) return m;
+
+        const currentScreenings = m.screenings || [];
+        const freshScreenings = itemsToAdd.map((screening, index) => {
+          const viewCount = Math.floor(Math.random() * 80) + 110;
+          return {
+            id: `scr-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+            time: screening.time,
+            date: screening.date,
+            ticketPrice: screening.ticketPrice,
+            viewersCount: viewCount,
+            revenueEarned: screening.ticketPrice * viewCount,
+            avgRating: parseFloat((4.6 + Math.random() * 0.4).toFixed(1)),
+            hallName: screening.hallName,
+            features: screening.features,
+            isAvailable: true,
+            isPremiere: screening.isPremiere,
+          };
+        });
+
+        const wantsPremiere = itemsToAdd.some((item) => item.isPremiere);
+
+        return {
+          ...m,
+          isPremiere: m.isPremiere || wantsPremiere,
+          screenings: [...currentScreenings, ...freshScreenings],
+        };
+      });
+    });
+
+    triggerAppNotification({
+      id: `sch-bulk-${Date.now()}`,
+      type: 'screening',
+      title: 'Bulk Showtimes Deployed 🎬',
+      message: `Successfully batched and injected ${bulkList.length} customized screening events in theater schedules.`,
+      timestamp: 'Just now',
+      movieTitle: 'Studio Terminal',
+    });
   };
 
   const handleToggleWatchlist = (movieId: string) => {
@@ -2593,6 +2659,21 @@ export default function App() {
             onUpdateFavoriteChips={handleUpdateFavoriteChips}
           />
         );
+      case 'rowonepass':
+        return (
+          <SubscriptionView
+            isLoggedIn={isLoggedIn}
+            username={username}
+            isPopcornPass={isPopcornPass}
+            onUpgradeSuccess={handleUpgradeSuccess}
+            onTriggerAuth={() => handleOpenAuthModal('signin')}
+            onBackToCinema={() => {
+              setCurrentTab('browse');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            triggerNotification={triggerAppNotification}
+          />
+        );
       case 'settings':
         return (
           <SettingsView
@@ -2716,6 +2797,7 @@ export default function App() {
             movies={movies}
             onUploadFilmMovie={handleUploadFilm}
             onScheduleScreening={handleScheduleScreening}
+            onScheduleScreeningsBulk={handleScheduleScreeningsBulk}
             onStartWatchParty={(movieId, roomName) => {
               setPlayingMovieId(movieId);
               setIsWatchPartyActive(true);
