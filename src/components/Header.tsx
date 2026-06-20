@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Film, Search, User, Bell, Users, LogOut, Settings, Edit3, QrCode } from 'lucide-react';
+import { Film, Search, User, Bell, Users, LogOut, Settings, Edit3, QrCode, Sparkles } from 'lucide-react';
 import NotificationDropdown, { AppNotification } from './NotificationDropdown';
 import { useLanguage } from '../context/LanguageContext';
 import RowOneLogo from './RowOneLogo';
@@ -118,7 +118,7 @@ export default function Header({
       </div>
 
       <nav className="hidden md:flex items-center gap-8">
-        {(['home', 'discover', 'browse', 'history', 'settings', 'studio'] as const).map((tab) => {
+        {(['home', 'discover', 'browse', 'history', 'studio'] as const).map((tab) => {
           const isActive = currentTab === tab;
           return (
             <button
@@ -141,12 +141,18 @@ export default function Header({
                     ? t('nav_home') 
                     : tab === 'discover'
                       ? t('nav_discover')
-                      : tab === 'settings' 
-                        ? t('nav_settings') 
-                        : t('nav_browse')}
+                      : t('nav_browse')}
             </button>
           );
         })}
+        {!isPopcornPass && (
+          <button
+            onClick={() => setCurrentTab('rowonepass')}
+            className="hidden md:block font-sans font-black text-[10px] tracking-widest uppercase bg-[#dda75f] text-black px-3.5 py-1.5 rounded hover:bg-[#dda75f]/95 transition-all cursor-pointer hover:shadow-[0_0_12px_rgba(221,167,95,0.4)]"
+          >
+            Upgrade
+          </button>
+        )}
       </nav>
 
       <div className="flex items-center gap-4">
@@ -301,6 +307,19 @@ export default function Header({
 
                 {/* Dropdown Options */}
                 <div className="space-y-1">
+                  {!isPopcornPass && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        setCurrentTab('rowonepass');
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 text-black text-xs font-black uppercase rounded-lg hover:opacity-90 transition-all cursor-pointer text-left font-sans mb-1.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Row One Pass</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -311,18 +330,6 @@ export default function Header({
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                     <span>Edit Profile Info</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowProfileDropdown(false);
-                      setCurrentTab('settings');
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-on-surface-variant hover:text-white hover:bg-white/5 transition-all cursor-pointer text-left font-sans"
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                    <span>Settings &amp; Billing</span>
                   </button>
                 </div>
 

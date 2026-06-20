@@ -238,6 +238,181 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   res.json({ received: true });
 });
 
+// 1a. New Brand-Specific Stripe Webhook Endpoint /api/stripe-webhook
+app.post("/api/stripe-webhook", express.raw({ type: "application/json" }), async (req: any, res: any) => {
+  const sig = req.headers["stripe-signature"];
+  let event: any;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (isStripeConfigured() && webhookSecret && sig) {
+    try {
+      const stripe = getStripe();
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      console.log(`✅ Real Stripe Webhook received at /api/stripe-webhook. Event type: ${event.type}`);
+    } catch (err: any) {
+      console.error(`❌ Signature verification failed for /api/stripe-webhook:`, err.message);
+      return res.status(400).send(`Webhook Signature Verification Error: ${err.message}`);
+    }
+  } else {
+    // Simulated / Dev webhook processing
+    try {
+      event = JSON.parse(req.body.toString());
+      console.log(`ℹ️ Simulated Stripe Webhook received at /api/stripe-webhook. Event type: ${event.type}`);
+    } catch (err: any) {
+      return res.status(400).send(`Invalid webhook request body: ${err.message}`);
+    }
+  }
+
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const userId = session.metadata?.userId;
+        const purchaseType = session.metadata?.type; // "subscription" or "studio" or "ticket"
+        const customerId = session.customer;
+
+        console.log(`[Webhook success] user: ${userId}, type: ${purchaseType}, customerId: ${customerId}`);
+
+        if (userId) {
+          if (purchaseType === "subscription") {
+            // Update profiles table
+            await supabaseServer
+              .from("profiles")
+              .update({ subscription_tier: "row_one_pass" })
+              .eq("id", userId);
+
+            // Update user_profiles table for UI compatibility
+            await supabaseServer
+              .from("user_profiles")
+              .update({ subscriptionPlan: "gold_premium", updatedAt: new Date().toISOString() })
+              .eq("userId", userId);
+
+            // Save billing payment details
+            if (customerId && isStripeConfigured()) {
+              try {
+                const stripe = getStripe();
+                const pms = await stripe.paymentMethods.list({ customer: customerId as string, type: "card" });
+                if (pms.data.length > 0) {
+                  const cardPm = pms.data[0];
+                  await supabaseServer.from("user_payment_methods").upsert({
+                    id: cardPm.id,
+                    userId,
+                    provider: "stripe",
+                    customerId: customerId,
+                    paymentMethodId: cardPm.id,
+                    cardBrand: cardPm.card?.brand || "Visa",
+                    lastFourDigits: cardPm.card?.last4 || "4242",
+                    expiryMonth: cardPm.card?.exp_month,
+                    expiryYear: cardPm.card?.exp_year,
+                    isDefault: true,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                  });
+                }
+              } catch (cardErr: any) {
+                console.warn("Could not fetch card details in /api/stripe-webhook:", cardErr.message);
+              }
+            }
+          } else if (purchaseType === "studio") {
+            // Update profiles table
+            await supabaseServer
+              .from("profiles")
+              .update({ subscription_tier: "studio", account_type: "studio" })
+              .eq("id", userId);
+
+            // Also update user_profiles table for UI compatibility
+            await supabaseServer
+              .from("user_profiles")
+              .update({ accountType: "studio", updatedAt: new Date().toISOString() })
+              .eq("userId", userId);
+
+            // Mark studio as verified
+            await supabaseServer
+              .from("studios")
+              .update({ is_verified: true })
+              .eq("owner_user_id", userId);
+
+            // Create log in studio_payments
+            await supabaseServer.from("studio_payments").insert({
+              studio_id: userId,
+              amount: 49.99,
+              status: "success",
+              payment_reference: session.id || "simulated_ref"
+            });
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const sub = event.data.object;
+        const customerId = sub.customer;
+        const status = sub.status;
+
+        // Lookup user by Stripe Customer ID
+        const { data: pms } = await supabaseServer
+          .from("user_payment_methods")
+          .select("userId")
+          .eq("customerId", customerId)
+          .limit(1);
+
+        if (pms && pms.length > 0) {
+          const userId = pms[0].userId;
+          const isActive = status === "active" || status === "trialing";
+          const tierName = isActive ? "row_one_pass" : "free";
+          const planName = isActive ? "gold_premium" : "spectator";
+
+          await supabaseServer
+            .from("profiles")
+            .update({ subscription_tier: tierName })
+            .eq("id", userId);
+
+          await supabaseServer
+            .from("user_profiles")
+            .update({ subscriptionPlan: planName, updatedAt: new Date().toISOString() })
+            .eq("userId", userId);
+
+          console.log(`🔄 [Webhook Update] User ${userId} subscription status set to ${tierName} (${status})`);
+        }
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const sub = event.data.object;
+        const customerId = sub.customer;
+
+        // Lookup user by Customer ID
+        const { data: pms } = await supabaseServer
+          .from("user_payment_methods")
+          .select("userId")
+          .eq("customerId", customerId)
+          .limit(1);
+
+        if (pms && pms.length > 0) {
+          const userId = pms[0].userId;
+
+          await supabaseServer
+            .from("profiles")
+            .update({ subscription_tier: "free" })
+            .eq("id", userId);
+
+          await supabaseServer
+            .from("user_profiles")
+            .update({ subscriptionPlan: "spectator", updatedAt: new Date().toISOString() })
+            .eq("userId", userId);
+
+          console.log(`❌ [Webhook Deleted] Set user ${userId} subscription_tier to free`);
+        }
+        break;
+      }
+    }
+  } catch (err: any) {
+    console.error(`💥 /api/stripe-webhook dispatch error:`, err.message);
+  }
+
+  res.json({ received: true });
+});
+
 // Configure JSON standard body-parser for non-webhook standard POST/GET transactions
 app.use(express.json());
 
@@ -367,6 +542,132 @@ app.get("/api/stripe/prices", async (req: any, res: any) => {
   } catch (err: any) {
     console.error("⚠️ Error fetching real Stripe prices:", err.message);
     res.json({ prices: defaultPrices, simulated: true, error: err.message });
+  }
+});
+
+// 2b. BRAND SPECIFIC CHEKOUT SESSION ENDPOINT /api/create-checkout-session
+app.post("/api/create-checkout-session", async (req: any, res: any) => {
+  const { priceId, userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: "Missing required userId in body" });
+  }
+
+  // Fetch email from profiles table to bypass having email input
+  let email = "cinephile@rowone.cinema";
+  try {
+    const { data: profile } = await supabaseServer
+      .from("profiles")
+      .select("email")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profile && profile.email) {
+      email = profile.email;
+    }
+  } catch (err: any) {
+    console.warn("Could not retrieve email for /api/create-checkout-session lookup:", err.message);
+  }
+
+  // Detect which mode to use based on the price ID or if it's subscription/one-time
+  const isSubscription = priceId === process.env.STRIPE_ROWONE_PASS_PRICE_ID || 
+                        priceId === "price_rowone_pass" || 
+                        priceId?.toLowerCase().includes("pass") || 
+                        priceId?.toLowerCase().includes("sub") ||
+                        priceId === "price_1Tibrl4cPcPYOVNbzktH30UU";
+
+  const isStudio = priceId === process.env.STRIPE_STUDIO_PRICE_ID || 
+                   priceId === "price_studio" || 
+                   priceId?.toLowerCase().includes("studio") || 
+                   priceId?.toLowerCase().includes("portal");
+
+  const mode = isSubscription ? "subscription" : "payment";
+  const purchaseType = isSubscription ? "subscription" : isStudio ? "studio" : "ticket";
+
+  const successUrl = `${req.headers.origin || "http://localhost:3000"}/subscribe/success/${isStudio ? "studio" : "pass"}?stripe_success=true&type=${purchaseType}&session_id={CHECKOUT_SESSION_ID}&userId=${userId}`;
+  const cancelUrl = `${req.headers.origin || "http://localhost:3000"}/subscribe`;
+
+  if (!isStripeConfigured()) {
+    console.log(`⚠️ Stripe is not configured for /api/create-checkout-session. Simulating mock subscription/payment.`);
+    const mockSessionId = `mock_sess_${Math.random().toString(36).substring(2, 11)}`;
+    const mockSuccessUrl = successUrl
+      .replace("{CHECKOUT_SESSION_ID}", mockSessionId)
+      + `&simulated=true`
+      + `&userId=${encodeURIComponent(userId)}`
+      + `&email=${encodeURIComponent(email)}`
+      + `&priceId=${encodeURIComponent(priceId || "")}`;
+
+    return res.json({ 
+      url: mockSuccessUrl, 
+      simulated: true,
+      sessionId: mockSessionId
+    });
+  }
+
+  try {
+    const stripe = getStripe();
+
+    let customerId: string | undefined;
+    const { data: savedPM } = await supabaseServer
+      .from("user_payment_methods")
+      .select("customerId")
+      .eq("userId", userId)
+      .limit(1);
+
+    if (savedPM && savedPM.length > 0 && savedPM[0].customerId) {
+      customerId = savedPM[0].customerId;
+    } else {
+      const customers = await stripe.customers.list({ email, limit: 1 });
+      if (customers.data.length > 0) {
+        customerId = customers.data[0].id;
+      } else {
+        const customer = await stripe.customers.create({
+          email,
+          metadata: { userId },
+          name: email.split("@")[0]
+        });
+        customerId = customer.id;
+      }
+    }
+
+    const lineItems = isSubscription ? [
+      {
+        price: priceId || process.env.STRIPE_ROWONE_PASS_PRICE_ID || "price_1Tibrl4cPcPYOVNbzktH30UU",
+        quantity: 1,
+      }
+    ] : [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: isStudio ? "ROWONE Studio Distributor License" : "Premium ROWONE Purchase",
+            description: isStudio ? "One-time registration license fees for DRC DRM broadcasting rights & customized grand theater lounges." : "Premium ROWONE charge."
+          },
+          unit_amount: isStudio ? 4900 : 1400, // $49.00 or $14.00
+        },
+        quantity: 1,
+      }
+    ];
+
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      payment_method_types: ["card", "link"],
+      mode,
+      customer: customerId,
+      line_items: lineItems,
+      metadata: {
+        userId,
+        type: purchaseType,
+        priceId: priceId || ""
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    };
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    return res.json({ url: session.url, sessionId: session.id, simulated: false });
+
+  } catch (err: any) {
+    console.error(`💥 Create checkout session failed at /api/create-checkout-session:`, err.message);
+    res.status(500).json({ error: `Failed to open secure payment gateway: ${err.message}` });
   }
 });
 

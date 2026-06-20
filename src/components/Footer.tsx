@@ -92,7 +92,6 @@ export default function Footer({ currentTab, setCurrentTab, onTriggerSupport, on
           { id: 'discover', label: t('mob_discover'), icon: Sparkles },
           { id: 'browse', label: t('mob_browse'), icon: Compass },
           { id: 'history', label: t('mob_tickets'), icon: Ticket },
-          { id: 'settings', label: t('mob_profile'), icon: User },
         ].map(({ id, label, icon: Icon }) => {
           const isActive = currentTab === id;
           return (

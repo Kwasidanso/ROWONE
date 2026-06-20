@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Movie, StudioScreening } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import RevenueTrendChart from './RevenueTrendChart';
 
 interface StudioViewProps {
   movies: Movie[];
@@ -2966,6 +2967,14 @@ export default function StudioView({
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* D3 Revenue Trend Chart */}
+                    <div className="animate-fade-in duration-300">
+                      <RevenueTrendChart 
+                        title="Studio Revenue Trend"
+                        subtitle="Real-time month-on-month theatrical performance monitoring ledger"
+                      />
                     </div>
 
                     {/* Simulation Console Wrapper Banner */}

@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { User, X, Camera, Check, Calendar, Mail, Image as ImageIcon, Upload } from 'lucide-react';
+import { User, X, Camera, Check, Calendar, Mail, Image as ImageIcon, Upload, Music, EyeOff, Type, VolumeX } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 interface EditProfileModalProps {
@@ -14,6 +14,14 @@ interface EditProfileModalProps {
   onClose: () => void;
   onSave: (newUsername: string, newDob: string, newAvatarUrl: string) => void;
   isPopcornPass?: boolean;
+  isCinemaAmbientSoundActive?: boolean;
+  isDyslexiaFontActive?: boolean;
+  isQuietModeActive?: boolean;
+  disableReactionsAndAnimations?: boolean;
+  onToggleCinemaAmbientSound?: (active: boolean) => void;
+  onToggleDyslexiaFont?: (active: boolean) => void;
+  onToggleQuietMode?: (active: boolean) => void;
+  onToggleDisableReactionsAndAnimations?: (active: boolean) => void;
 }
 
 const PRESET_AVATARS = [
@@ -55,7 +63,15 @@ export default function EditProfileModal({
   userAvatarUrl,
   onClose,
   onSave,
-  isPopcornPass = false
+  isPopcornPass = false,
+  isCinemaAmbientSoundActive = false,
+  isDyslexiaFontActive = false,
+  isQuietModeActive = false,
+  disableReactionsAndAnimations = false,
+  onToggleCinemaAmbientSound,
+  onToggleDyslexiaFont,
+  onToggleQuietMode,
+  onToggleDisableReactionsAndAnimations
 }: EditProfileModalProps) {
   const [newUsername, setNewUsername] = useState(username);
   const [customAvatar, setCustomAvatar] = useState(userAvatarUrl);

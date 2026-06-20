@@ -18,7 +18,6 @@ import AuthView from './components/AuthView';
 import EditProfileModal from './components/EditProfileModal';
 import TicketModal from './components/TicketModal';
 import SeatSelectionModal from './components/SeatSelectionModal';
-import SettingsView from './components/SettingsView';
 import SubscriptionView from './components/SubscriptionView';
 import UpgradeModal from './components/UpgradeModal';
 import SupportPanel from './components/SupportPanel';
@@ -44,8 +43,8 @@ export default function App() {
   const [currentTab, setCurrentTabState] = useState<string>(() => {
     try {
       const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
-      if (path.includes('subscription/rowonepass') || path.startsWith('subscription/rowonepass')) return 'rowonepass';
-      if (path.startsWith('settings')) return 'settings';
+      if (path.includes('subscription') || path.startsWith('subscribe')) return 'rowonepass';
+      if (path.startsWith('settings')) return 'home';
       if (path.startsWith('studio')) return 'studio';
       if (path.startsWith('discover')) return 'discover';
       if (path.startsWith('browse')) return 'browse';
@@ -61,14 +60,9 @@ export default function App() {
     try {
       let targetPath = `/${tab.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
       if (tab === 'rowonepass') {
-        targetPath = '/subscription/rowonepass';
+        targetPath = '/subscribe';
       } else if (tab === 'settings') {
-        const currentPath = window.location.pathname.toLowerCase();
-        if (currentPath.includes('/billing')) {
-          targetPath = '/settings/billing';
-        } else {
-          targetPath = '/settings/profile';
-        }
+        targetPath = '/home';
       } else if (tab === 'studio') {
         const currentPath = window.location.pathname.toLowerCase();
         if (currentPath.includes('/schedule')) {
@@ -238,10 +232,10 @@ export default function App() {
       if (!onBootIsMovie) {
         // Default: set tab based on URL path
         const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
-        if (path.includes('subscription/rowonepass') || path.startsWith('subscription/rowonepass')) {
+        if (path.includes('subscription') || path.startsWith('subscribe')) {
           setCurrentTabState('rowonepass');
         } else if (path.startsWith('settings')) {
-          setCurrentTabState('settings');
+          setCurrentTabState('home');
         } else if (path.startsWith('studio')) {
           setCurrentTabState('studio');
         } else if (path.startsWith('discover')) {
@@ -267,10 +261,10 @@ export default function App() {
           resetSeoTags();
 
           const path = window.location.pathname.toLowerCase().replace(/^\/+/, '');
-          if (path.includes('subscription/rowonepass') || path.startsWith('subscription/rowonepass')) {
+          if (path.includes('subscription') || path.startsWith('subscribe')) {
             setCurrentTabState('rowonepass');
           } else if (path.startsWith('settings')) {
-            setCurrentTabState('settings');
+            setCurrentTabState('home');
           } else if (path.startsWith('studio')) {
             setCurrentTabState('studio');
           } else if (path.startsWith('discover')) {
@@ -307,6 +301,22 @@ export default function App() {
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [stripeVerifying, setStripeVerifying] = useState<boolean>(false);
   const [stripeVerifyMessage, setStripeVerifyMessage] = useState<string>('');
+
+  const [showCancelledBanner, setShowCancelledBanner] = useState<boolean>(() => {
+    return localStorage.getItem('popcorn_cancelled_banner_active') === 'true';
+  });
+
+  useEffect(() => {
+    if (userProfile) {
+      if (userProfile.subscriptionPlan === 'gold_premium') {
+        localStorage.setItem('popcorn_had_premium', 'true');
+      } else if (userProfile.subscriptionPlan === 'spectator' && localStorage.getItem('popcorn_had_premium') === 'true') {
+        localStorage.setItem('popcorn_cancelled_banner_active', 'true');
+        setShowCancelledBanner(true);
+        localStorage.removeItem('popcorn_had_premium');
+      }
+    }
+  }, [userProfile]);
 
   // Stripe session verification handler on page boot / redirect
   useEffect(() => {
@@ -2666,55 +2676,14 @@ export default function App() {
             username={username}
             isPopcornPass={isPopcornPass}
             onUpgradeSuccess={handleUpgradeSuccess}
-            onTriggerAuth={() => handleOpenAuthModal('signin')}
+            onTriggerAuth={handleOpenAuthModal}
             onBackToCinema={() => {
               setCurrentTab('browse');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             triggerNotification={triggerAppNotification}
-          />
-        );
-      case 'settings':
-        return (
-          <SettingsView
-            isLoggedIn={isLoggedIn}
-            username={username}
-            userAge={userAge}
-            dobString={dobString}
-            parentMaxRating={parentMaxRating}
-            isParentalModeActive={isParentalModeActive}
-            onUpdateParentalControls={(isActive, maxRating) => {
-              setIsParentalModeActive(isActive);
-              setParentMaxRating(maxRating);
-            }}
-            onTriggerAuth={() => handleOpenAuthModal('signin')}
-            onTriggerEditProfile={() => setShowEditProfileModal(true)}
-            onSignOut={handleSignOut}
-            isPopcornPass={isPopcornPass}
-            onTriggerUpgrade={() => handleTriggerUpgrade()}
-            onToggleSubscription={(isActive) => {
-              setIsPopcornPass(isActive);
-              localStorage.setItem('isPopcornPass', isActive ? 'true' : 'false');
-            }}
-            isDyslexiaFontActive={isDyslexiaFontActive}
-            onUpdateDyslexiaFont={handleUpdateDyslexiaFont}
-            isQuietModeActive={isQuietModeActive}
-            onUpdateQuietMode={handleUpdateQuietMode}
-            disableReactionsAndAnimations={disableReactionsAndAnimations}
-            onUpdateDisableReactionsAndAnimations={handleUpdateDisableReactionsAndAnimations}
-            isCinemaAmbientSoundActive={isCinemaAmbientSoundActive}
-            onUpdateCinemaAmbientSound={handleUpdateCinemaAmbientSound}
-            onTriggerSupport={() => setIsSupportOpen(true)}
-             hasStudioAccount={hasStudioAccount}
-            onRegisterStudioClick={() => handleOpenAuthModal('register-studio')}
-            activeMode={activeMode}
-            onToggleActiveMode={(mode) => {
-              setActiveMode(mode);
-              localStorage.setItem('popcorn_active_mode', mode);
-            }}
             userProfile={userProfile}
-            onUpdateProfile={handleUpdateProfileLocal}
-            triggerAppNotification={triggerAppNotification}
+            movies={movies}
           />
         );
       case 'notifications':
@@ -2875,10 +2844,38 @@ export default function App() {
     }
   }
 
+  const handleDismissCancelledBanner = () => {
+    localStorage.removeItem('popcorn_cancelled_banner_active');
+    setShowCancelledBanner(false);
+  };
+
   const isFullWidthHome = currentTab === 'home' && !selectedMovieId;
 
   return (
     <div className={`min-h-screen bg-background text-on-surface font-sans flex flex-col relative transition-all duration-500 ease-in-out ${isFullWidthHome ? 'pt-0' : 'pt-16'} ${isDyslexiaFontActive ? 'font-dyslexic' : ''} ${isQuietModeActive ? 'quiet-mode' : ''}`}>
+      {showCancelledBanner && (
+        <div className="bg-[#8C1C13] text-[#EDE6E3] py-2 px-4 flex justify-between items-center text-sm font-sans z-50 sticky top-0 border-b border-[#dda75f]/30">
+          <div className="flex items-center space-x-2">
+            <span className="font-semibold">⚠️ Your Row One Pass ended.</span>
+            <span>You still have access to The Lobby — upgrade any time.</span>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button 
+              onClick={() => {
+                handleDismissCancelledBanner();
+                setCurrentTab('rowonepass');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="bg-[#dda75f] text-black px-3 py-1 rounded text-xs font-semibold hover:bg-[#dda75f]/90 transition"
+            >
+              Rejoin Row One
+            </button>
+            <button onClick={handleDismissCancelledBanner} className="text-[#EDE6E3]/70 hover:text-[#EDE6E3] p-1">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <Header
         currentTab={currentTab}
         setCurrentTab={(tab) => {
